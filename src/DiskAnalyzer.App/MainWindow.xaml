@@ -11,6 +11,7 @@
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <ctl:TreeRowWidthConverter x:Key="TreeRowWidth" />
 
         <!-- 15. 파일 / 폴더 우클릭 메뉴 -->
         <ContextMenu x:Key="RowMenu" x:Shared="False">
@@ -619,6 +620,11 @@
                                         <CheckBox Content="경로 계층 트리" IsChecked="{Binding UseTreeView}"
                                                   VerticalAlignment="Center" Margin="0,0,10,0"
                                                   Visibility="{Binding ShowPathModeOptions, Converter={StaticResource BoolToVis}}" />
+                                        <StackPanel Orientation="Horizontal"
+                                                    Visibility="{Binding ShowFoldTree, Converter={StaticResource BoolToVis}}">
+                                            <Button Content="모두 펼치기" Command="{Binding ExpandAllCommand}" Margin="0,0,6,0" />
+                                            <Button Content="모두 접기" Command="{Binding CollapseAllCommand}" />
+                                        </StackPanel>
                                     </StackPanel>
                                     <Button Content="{Binding RefreshText}" HorizontalAlignment="Right"
                                             Command="{Binding RefreshCommand}"
@@ -664,6 +670,9 @@
                                                        TextWrapping="Wrap" Margin="0,3,0,0" />
                                             <TextBlock Text="{Binding ProtectedInfo}" Style="{StaticResource Caption}"
                                                        Foreground="{DynamicResource WarningBrush}"
+                                                       TextWrapping="Wrap" Margin="0,3,0,0" />
+                                            <TextBlock Text="{Binding FoldSummary}" Style="{StaticResource Caption}"
+                                                       Foreground="{DynamicResource AccentBrush}"
                                                        TextWrapping="Wrap" Margin="0,3,0,0" />
                                         </StackPanel>
                                     </Border>
@@ -827,6 +836,91 @@
                                                                        MinWidth="110" />
                                                             <TextBlock Text="{Binding CategoryText}" Style="{StaticResource Caption}"
                                                                        MinWidth="130" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </HierarchicalDataTemplate>
+                                            </TreeView.ItemTemplate>
+                                        </TreeView>
+
+                                        <!-- 폴더 트리 + 반복 패턴 접기 -->
+                                        <TreeView x:Name="CleanupFoldTreeView" ItemsSource="{Binding FoldTree}" Padding="8"
+                                                  AutomationProperties.AutomationId="CleanupFoldTree"
+                                                  VirtualizingPanel.ScrollUnit="Pixel"
+                                                  MouseDoubleClick="OnCleanupFoldDoubleClick"
+                                                  Visibility="{Binding ShowFoldTree, Converter={StaticResource BoolToVis}}">
+                                            <TreeView.ItemTemplate>
+                                                <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                                    <Grid Margin="0,1" ToolTip="{Binding FullPath}">
+                                                        <Grid.Width>
+                                                            <MultiBinding Converter="{StaticResource TreeRowWidth}">
+                                                                <Binding Path="ActualWidth" RelativeSource="{RelativeSource AncestorType=TreeView}" />
+                                                                <Binding Path="Depth" />
+                                                            </MultiBinding>
+                                                        </Grid.Width>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" MaxWidth="460" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <!-- Focusable=False: 체크박스가 포커스를 가져가면 중첩 TreeViewItem 의 GotFocus 가
+                                                             위로 번져 엉뚱한 상위 행(루트)이 선택 표시된다. -->
+                                                        <CheckBox Margin="0,0,8,0" VerticalAlignment="Center" Focusable="False"
+                                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                                  IsEnabled="{Binding CanSelect}" />
+
+                                                        <Border Grid.Column="1" Width="9" Height="9" CornerRadius="2"
+                                                                Margin="0,0,8,0" VerticalAlignment="Center">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="Background" Value="{DynamicResource FileIconBrush}" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsFolder}" Value="True">
+                                                                            <Setter Property="Background" Value="{DynamicResource FolderIconBrush}" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding IsDirectoryItem}" Value="True">
+                                                                            <Setter Property="Background" Value="{DynamicResource FolderIconBrush}" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding IsPattern}" Value="True">
+                                                                            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                        </Border>
+
+                                                        <TextBlock Grid.Column="2" Text="{Binding Title}" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="FontWeight" Value="Normal" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsItem}" Value="False">
+                                                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding IsPattern}" Value="True">
+                                                                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+
+                                                        <TextBlock Grid.Column="3" Text="{Binding Detail}" Style="{StaticResource Caption}"
+                                                                   Margin="10,0,12,0" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding Detail}" />
+
+                                                        <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding SizeText}" Style="{StaticResource Numeric}"
+                                                                       FontSize="12.5" MinWidth="90" TextAlignment="Right" Margin="0,0,14,0" />
+                                                            <TextBlock Text="{Binding CountText}" Style="{StaticResource Caption}"
+                                                                       MinWidth="190" TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Text="{Binding GradeText}" Style="{StaticResource Caption}"
+                                                                       MinWidth="110" />
+                                                            <TextBlock Text="{Binding CategoryText}" Style="{StaticResource Caption}"
+                                                                       MinWidth="130" TextTrimming="CharacterEllipsis" />
                                                         </StackPanel>
                                                     </Grid>
                                                 </HierarchicalDataTemplate>

@@ -582,6 +582,14 @@ public partial class MainWindow : Window
             ShellService.OpenInExplorer(row.FullPath, row.IsDirectory);
     }
 
+    /// <summary>폴더 트리에서 후보(파일/폴더)를 더블 클릭하면 탐색기에서 연다. 폴더/패턴 줄은 기본 동작(펼치기/접기)에 맡긴다.</summary>
+    private void OnCleanupFoldDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        // SelectedItem 은 중첩 트리에서 상위 행으로 잘못 잡힐 수 있어서, 실제로 누른 요소의 데이터를 쓴다.
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is CleanupFoldNode { Candidate: { } c })
+            ShellService.OpenInExplorer(c.FullPath, c.IsDirectory);
+    }
+
     /// <summary>정리 추천 탭의 삭제도 같은 확인 창을 거친다(7. 즉시 삭제 금지).</summary>
     private void OnCleanupDelete(object sender, RoutedEventArgs e)
     {

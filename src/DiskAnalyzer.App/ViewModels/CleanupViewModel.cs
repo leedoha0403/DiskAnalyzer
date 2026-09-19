@@ -30,6 +30,8 @@ public sealed class CleanupViewModel : ObservableObject
         SelectRecommendedCommand = new RelayCommand(SelectRecommended, () => Candidates.Count > 0);
         ClearSelectionCommand = new RelayCommand(ClearSelection, () => SelectedCount > 0);
         SimulateCommand = new RelayCommand(Simulate, () => SelectedCount > 0);
+        ExpandAllCommand = new RelayCommand(() => _foldTree?.SetAllExpanded(true), () => _foldTree != null);
+        CollapseAllCommand = new RelayCommand(() => _foldTree?.SetAllExpanded(false), () => _foldTree != null);
     }
 
     // ---------------------------------------------------------------- 옵션 (55/65)
@@ -79,9 +81,13 @@ public sealed class CleanupViewModel : ObservableObject
 
     // ---------------------------------------------------------------- 3/4. 보기 방식
 
-    public IReadOnlyList<string> ViewModeOptions { get; } = new[] { "파일별", "경로별", "유형별", "정리 이유별" };
+    /// <summary>"폴더 트리" 가 기본이다: 폴더별로 묶고 이름 패턴이 반복되는 후보는 한 줄로 접는다.</summary>
+    public const string FoldTreeMode = "폴더 트리";
 
-    private string _selectedViewMode = "파일별";
+    public IReadOnlyList<string> ViewModeOptions { get; } =
+        new[] { FoldTreeMode, "파일별", "경로별", "유형별", "정리 이유별" };
+
+    private string _selectedViewMode = FoldTreeMode;
     public string SelectedViewMode
     {
         get => _selectedViewMode;
@@ -92,6 +98,7 @@ public sealed class CleanupViewModel : ObservableObject
             Raise(nameof(ShowGroupList));
             Raise(nameof(ShowPathModeOptions));
             Raise(nameof(ShowTree));
+            Raise(nameof(ShowFoldTree));
             BuildViews();
         }
     }
@@ -112,10 +119,22 @@ public sealed class CleanupViewModel : ObservableObject
     public bool ShowFileList => SelectedViewMode == "파일별";
     public bool ShowPathModeOptions => SelectedViewMode == "경로별";
     public bool ShowTree => ShowPathModeOptions && UseTreeView;
-    public bool ShowGroupList => !ShowFileList && !ShowTree;
+    public bool ShowFoldTree => SelectedViewMode == FoldTreeMode;
+    public bool ShowGroupList => !ShowFileList && !ShowTree && !ShowFoldTree;
 
     public ObservableCollection<CleanupGroup> Groups { get; } = new();
     public ObservableCollection<CleanupPathNode> PathTree { get; } = new();
+
+    /// <summary>폴더 트리 보기의 루트들(패턴 접기 포함).</summary>
+    public ObservableCollection<CleanupFoldNode> FoldTree { get; } = new();
+
+    private CleanupFoldTree? _foldTree;
+
+    private string _foldSummary = string.Empty;
+    public string FoldSummary { get => _foldSummary; private set => Set(ref _foldSummary, value); }
+
+    public RelayCommand ExpandAllCommand { get; private set; } = null!;
+    public RelayCommand CollapseAllCommand { get; private set; } = null!;
 
     // ---------------------------------------------------------------- 2/15. 새로고침
 
@@ -355,6 +374,11 @@ public sealed class CleanupViewModel : ObservableObject
     private void OnCandidateChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(CleanupCandidate.IsSelected)) return;
+
+        // 폴더/패턴 체크박스가 수천 건을 한 번에 바꾸는 중이면 여기서 재집계하지 않는다.
+        // 후보마다 O(N) 집계가 돌면 O(N²) 이 되어 화면이 멈춘다. 끝난 뒤 OnBulkSelectionCompleted 가 한 번만 한다.
+        if (_foldTree is { IsBulkUpdating: true }) return;
+
         RecalculateSelection();
         RefreshGroupSelection();
     }
@@ -480,12 +504,35 @@ public sealed class CleanupViewModel : ObservableObject
     {
         var items = Candidates.ToList();
 
+        // 다시 만들어도 사용자가 펼쳐 둔 위치는 유지한다(삭제할 때마다 트리가 접히면 불편하다).
+        var expanded = _foldTree?.CaptureExpanded();
+        if (_foldTree != null) _foldTree.BulkSelectionCompleted -= OnBulkSelectionCompleted;
+        _foldTree = null;
+
         Groups.Clear();
         PathTree.Clear();
+        FoldTree.Clear();
+        FoldSummary = string.Empty;
+        ExpandAllCommand.RaiseCanExecuteChanged();
+        CollapseAllCommand.RaiseCanExecuteChanged();
         if (items.Count == 0) return;
 
         switch (SelectedViewMode)
         {
+            case FoldTreeMode:
+                _foldTree = CleanupPatternFolder.Build(items);
+                _foldTree.BulkSelectionCompleted += OnBulkSelectionCompleted;
+                if (expanded is { Count: > 0 }) _foldTree.RestoreExpanded(expanded);
+                foreach (var n in _foldTree.Roots) FoldTree.Add(n);
+
+                FoldSummary = _foldTree.PatternCount > 0
+                    ? $"이름 패턴이 반복되는 {SizeFormatter.Count(_foldTree.FoldedItemCount)}건을 " +
+                      $"{SizeFormatter.Count(_foldTree.PatternCount)}개 묶음으로 접었습니다 — 묶음을 펼치면 개별 파일이 나옵니다."
+                    : string.Empty;
+                ExpandAllCommand.RaiseCanExecuteChanged();
+                CollapseAllCommand.RaiseCanExecuteChanged();
+                break;
+
             case "경로별":
                 foreach (var g in CleanupGrouper.ByPath(items)) Groups.Add(g);
                 foreach (var n in CleanupGrouper.BuildTree(items)) PathTree.Add(n);
@@ -506,6 +553,13 @@ public sealed class CleanupViewModel : ObservableObject
     {
         foreach (var g in Groups) g.RefreshSelection();
         foreach (var n in PathTree) n.RefreshSelection();
+        _foldTree?.RefreshSelection();
+    }
+
+    private void OnBulkSelectionCompleted(object? sender, EventArgs e)
+    {
+        RecalculateSelection();
+        RefreshGroupSelection();
     }
 
     private void DetachSelectionHandlers()
