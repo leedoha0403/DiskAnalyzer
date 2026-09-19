@@ -140,6 +140,62 @@ internal static class Win32
         [MarshalAs(UnmanagedType.U1)] public bool IncursSeekPenalty;
     }
 
+    // ------------------------------------------------------------------ 고속 삭제(FastDeleter)
+
+    internal const uint INVALID_FILE_ATTRIBUTES = 0xFFFFFFFF;
+    internal const uint FILE_ATTRIBUTE_NORMAL = 0x00000080;
+
+    internal const uint IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003;   // Junction
+    internal const uint IO_REPARSE_TAG_SYMLINK = 0xA000000C;
+
+    internal const int ERROR_SHARING_VIOLATION = 32;
+    internal const int ERROR_LOCK_VIOLATION = 33;
+    internal const int ERROR_DIR_NOT_EMPTY = 145;
+
+    internal const uint DELETE = 0x00010000;
+    internal const uint FILE_READ_ATTRIBUTES = 0x00000080;
+    internal const uint FILE_SHARE_DELETE = 0x00000004;
+    internal const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+    internal const uint FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
+
+    internal const int FileDispositionInfo = 4;
+    internal const int FileDispositionInfoEx = 21;
+
+    internal const uint FILE_DISPOSITION_FLAG_DELETE = 0x1;
+    internal const uint FILE_DISPOSITION_FLAG_POSIX_SEMANTICS = 0x2;
+    internal const uint FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE = 0x10;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct FILE_DISPOSITION_INFO_EX { public uint Flags; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct FILE_DISPOSITION_INFO { public byte DeleteFile; }   // Win32 BOOLEAN = 1 byte
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "DeleteFileW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool DeleteFile(string lpFileName);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "RemoveDirectoryW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool RemoveDirectory(string lpPathName);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "SetFileAttributesW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetFileAttributes(string lpFileName, uint dwFileAttributes);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "GetFileAttributesW")]
+    internal static extern uint GetFileAttributes(string lpFileName);
+
+    [DllImport("kernel32.dll", SetLastError = true, EntryPoint = "SetFileInformationByHandle")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetFileInformationByHandle(SafeFileHandle hFile, int fileInformationClass,
+        ref FILE_DISPOSITION_INFO_EX lpFileInformation, uint dwBufferSize);
+
+    [DllImport("kernel32.dll", SetLastError = true, EntryPoint = "SetFileInformationByHandle")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetFileInformationByHandle(SafeFileHandle hFile, int fileInformationClass,
+        ref FILE_DISPOSITION_INFO lpFileInformation, uint dwBufferSize);
+
     /// <summary>스캔 중 이동식 미디어 없음 등의 시스템 오류 대화상자를 억제한다.</summary>
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern bool SetThreadErrorMode(uint dwNewMode, out uint lpOldMode);

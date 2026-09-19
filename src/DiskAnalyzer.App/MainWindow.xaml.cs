@@ -412,7 +412,7 @@ public partial class MainWindow : Window
     ///  - 시스템 영역(Windows / Program Files / ProgramData / WinSxS 등)은 별도 경고를 추가한다.
     ///  - 기본 동작은 휴지통이며 영구 삭제는 메뉴를 따로 선택해야 한다.
     /// </summary>
-    private void Delete(EntryRow? row, bool permanent)
+    private async void Delete(EntryRow? row, bool permanent)
     {
         if (row == null) return;
 
@@ -439,9 +439,12 @@ public partial class MainWindow : Window
             if (second != MessageBoxResult.Yes) return;
         }
 
-        bool ok = permanent
-            ? ShellService.DeletePermanently(row.FullPath)
-            : ShellService.MoveToRecycleBin(row.FullPath);
+        // 큰 폴더를 UI 스레드에서 지우면 그동안 창이 멈춘다. 백그라운드에서 실행한다.
+        _vm.StatusMessage = $"{action} 진행 중: {row.FullPath}";
+        string path = row.FullPath;
+        bool ok = await Task.Run(() => permanent
+            ? ShellService.DeletePermanently(path)
+            : ShellService.MoveToRecycleBin(path));
 
         _vm.StatusMessage = ok
             ? $"{action} 완료: {row.FullPath} (결과 반영은 새로고침 후)"

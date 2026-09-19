@@ -244,8 +244,9 @@ public sealed class DeleteReviewViewModel : ObservableObject
         var progress = new Progress<DeletionProgress>(p =>
         {
             ProgressValue = p.Ratio * 100d;
-            ProgressText = $"{p.Done:N0} / {p.Total:N0} files    " +
-                           $"{SizeFormatter.Format(p.BytesDone)} / {SizeFormatter.Format(p.BytesTotal)}";
+            ProgressText = $"{p.Done:N0} / {p.Total:N0} 항목    " +
+                           $"{SizeFormatter.Format(p.BytesDone)} / {SizeFormatter.Format(p.BytesTotal)}" +
+                           (p.EntriesDeleted > 0 ? $"    ·    삭제된 파일 {p.EntriesDeleted:N0}개" : string.Empty);
             CurrentPath = p.CurrentPath;
         });
 

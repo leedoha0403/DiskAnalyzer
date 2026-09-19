@@ -449,6 +449,11 @@ public sealed class CleanupViewModel : ObservableObject
         }
         BuildViews();
         RecalculateSelection();
+
+        // 삭제 후에도 "정리 후보 34건 · 7.96 GB" 가 그대로 남아 있으면 화면이 거짓말을 한다.
+        Headline = Candidates.Count == 0
+            ? "조건에 맞는 정리 후보가 없습니다."
+            : $"정리 후보 {SizeFormatter.Count(Candidates.Count)}건 · 합계 {SizeFormatter.Format(Candidates.Sum(c => c.Size))}";
     }
 
     /// <summary>

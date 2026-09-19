@@ -42,9 +42,23 @@ public static class ShellService
     public static bool MoveToRecycleBin(string fullPath)
         => FileOperation(fullPath, FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT | FOF_WANTNUKEWARNING);
 
-    /// <summary>영구 삭제. UI 에서 별도 확인을 받은 경우에만 호출한다.</summary>
+    /// <summary>
+    /// 영구 삭제. UI 에서 별도 확인을 받은 경우에만 호출한다.
+    /// 셸(SHFileOperation)이 아니라 <see cref="FastDeleter"/> 를 쓴다: 병렬 처리, 읽기 전용/사용 중 파일 재시도,
+    /// 긴 경로 지원. 이미 없는 경로는 "지운 것과 같은 상태"이므로 성공으로 본다.
+    /// </summary>
     public static bool DeletePermanently(string fullPath)
-        => FileOperation(fullPath, FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT);
+    {
+        try
+        {
+            var r = FastDeleter.Delete(fullPath);
+            return r.Success || r.NotFound;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     private static bool FileOperation(string fullPath, ushort flags)
     {
