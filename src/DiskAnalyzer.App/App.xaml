@@ -1,0 +1,14 @@
+﻿<Application x:Class="DiskAnalyzer.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- [0] 테마 팔레트 - 런타임에 통째로 교체된다(App.ApplyTheme) -->
+                <ResourceDictionary Source="Themes/Dark.xaml" />
+                <ResourceDictionary Source="Themes/Shared.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

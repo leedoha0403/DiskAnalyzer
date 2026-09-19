@@ -1,0 +1,30 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Color x:Key="WindowBackgroundColor">#FFF3F3F3</Color>
+    <SolidColorBrush x:Key="WindowBackground" Color="#FFF3F3F3" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="SurfaceAltBrush" Color="#FFFAFAFA" />
+    <SolidColorBrush x:Key="SurfaceHoverBrush" Color="#FFEDEDED" />
+    <SolidColorBrush x:Key="BorderBrushSoft" Color="#FFE0E0E0" />
+    <SolidColorBrush x:Key="BorderBrushStrong" Color="#FFC8C8C8" />
+
+    <SolidColorBrush x:Key="TextBrush" Color="#FF1B1B1B" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="#FF5F5F5F" />
+    <SolidColorBrush x:Key="TextDimBrush" Color="#FF8A8A8A" />
+
+    <SolidColorBrush x:Key="AccentBrush" Color="#FF0067C0" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#220067C0" />
+    <SolidColorBrush x:Key="BarFillBrush" Color="#FF5B9BD5" />
+    <SolidColorBrush x:Key="BarFillStrongBrush" Color="#FFD2694B" />
+    <SolidColorBrush x:Key="BarTrackBrush" Color="#FFE8E8E8" />
+    <SolidColorBrush x:Key="SelectionBrush" Color="#FFCCE4F7" />
+
+    <SolidColorBrush x:Key="WarningBrush" Color="#FFB8860B" />
+    <SolidColorBrush x:Key="FolderIconBrush" Color="#FFC08A2E" />
+    <SolidColorBrush x:Key="FileIconBrush" Color="#FF4E7FA6" />
+
+    <SolidColorBrush x:Key="TreemapStrokeBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="TreemapLabelBrush" Color="#FF101010" />
+
+</ResourceDictionary>

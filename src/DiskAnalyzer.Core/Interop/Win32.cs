@@ -1,0 +1,154 @@
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+
+namespace DiskAnalyzer.Core.Interop;
+
+/// <summary>
+/// 27. Windows API 최적화.
+/// FindFirstFileEx + FindExInfoBasic + FIND_FIRST_EX_LARGE_FETCH 조합을 사용한다.
+///  - FindExInfoBasic : 8.3 단축 이름(cAlternateFileName)을 채우지 않는다. NTFS 에서 이 필드는
+///                      별도 조회를 유발하므로 끄는 것만으로 열거가 눈에 띄게 빨라진다.
+///  - LARGE_FETCH     : 커널이 한 번의 요청으로 더 많은 디렉터리 엔트리를 가져오게 해
+///                      FindNextFile 당 발생하는 syscall 횟수를 줄인다.
+/// 열거 결과(WIN32_FIND_DATAW)에 크기/시간/속성이 모두 들어 있으므로
+/// 파일마다 GetFileAttributesEx 같은 추가 호출을 하지 않는다(26/27).
+/// </summary>
+internal static class Win32
+{
+    internal const int MAX_PATH = 260;
+    internal const uint FILE_ATTRIBUTE_DIRECTORY = 0x00000010;
+    internal const uint FILE_ATTRIBUTE_HIDDEN = 0x00000002;
+    internal const uint FILE_ATTRIBUTE_SYSTEM = 0x00000004;
+    internal const uint FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400;
+
+    internal const int ERROR_ACCESS_DENIED = 5;
+    internal const int ERROR_PATH_NOT_FOUND = 3;
+    internal const int ERROR_FILE_NOT_FOUND = 2;
+    internal const int ERROR_NO_MORE_FILES = 18;
+
+    internal const int FindExInfoBasic = 1;
+    internal const int FindExSearchNameMatch = 0;
+    internal const int FIND_FIRST_EX_LARGE_FETCH = 2;
+
+    /// <summary>
+    /// Pack = 4 필수.
+    /// 네이티브 WIN32_FIND_DATAW 는 DWORD/FILETIME(=DWORD 2개) 만으로 구성되어 4바이트 정렬이다.
+    /// 기본 Pack(8)으로 두면 long 필드가 8바이트 경계로 밀려 레이아웃이 깨진다.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode, Pack = 4)]
+    internal unsafe struct WIN32_FIND_DATAW
+    {
+        public uint dwFileAttributes;
+        public long ftCreationTime;
+        public long ftLastAccessTime;
+        public long ftLastWriteTime;
+        public uint nFileSizeHigh;
+        public uint nFileSizeLow;
+        public uint dwReserved0;
+        public uint dwReserved1;
+        public fixed char cFileName[MAX_PATH];
+        public fixed char cAlternateFileName[14];
+
+        public long Size => ((long)nFileSizeHigh << 32) | nFileSizeLow;
+        public bool IsDirectory => (dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        public bool IsReparsePoint => (dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "FindFirstFileExW")]
+    internal static extern SafeFindHandle FindFirstFileEx(
+        string lpFileName,
+        int fInfoLevelId,
+        out WIN32_FIND_DATAW lpFindFileData,
+        int fSearchOp,
+        IntPtr lpSearchFilter,
+        int dwAdditionalFlags);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "FindNextFileW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool FindNextFile(SafeFindHandle hFindFile, out WIN32_FIND_DATAW lpFindFileData);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool FindClose(IntPtr hFindFile);
+
+    /// <summary>
+    /// 1/2/12. 새로고침 / 삭제 전 최종 검증용.
+    /// 파일을 열지 않고 메타데이터만 가져오므로 사용 중인 파일에도 안전하다.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    internal struct WIN32_FILE_ATTRIBUTE_DATA
+    {
+        public uint dwFileAttributes;
+        public long ftCreationTime;
+        public long ftLastAccessTime;
+        public long ftLastWriteTime;
+        public uint nFileSizeHigh;
+        public uint nFileSizeLow;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "GetFileAttributesExW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetFileAttributesEx(string lpFileName, int fInfoLevelId,
+        out WIN32_FILE_ATTRIBUTE_DATA lpFileInformation);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "CreateFileW")]
+    internal static extern SafeFileHandle CreateFile(
+        string lpFileName,
+        uint dwDesiredAccess,
+        uint dwShareMode,
+        IntPtr lpSecurityAttributes,
+        uint dwCreationDisposition,
+        uint dwFlagsAndAttributes,
+        IntPtr hTemplateFile);
+
+    internal const uint GENERIC_READ = 0x80000000;
+    internal const uint FILE_SHARE_READ = 0x00000001;
+    internal const uint FILE_SHARE_WRITE = 0x00000002;
+    internal const uint OPEN_EXISTING = 3;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ReadFile(SafeFileHandle hFile, IntPtr lpBuffer, uint nNumberOfBytesToRead,
+        out uint lpNumberOfBytesRead, IntPtr lpOverlapped);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetFilePointerEx(SafeFileHandle hFile, long liDistanceToMove,
+        out long lpNewFilePointer, uint dwMoveMethod);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool DeviceIoControl(SafeFileHandle hDevice, uint dwIoControlCode,
+        IntPtr lpInBuffer, uint nInBufferSize, IntPtr lpOutBuffer, uint nOutBufferSize,
+        out uint lpBytesReturned, IntPtr lpOverlapped);
+
+    internal const uint IOCTL_STORAGE_QUERY_PROPERTY = 0x002D1400;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct STORAGE_PROPERTY_QUERY
+    {
+        public int PropertyId;      // 7 = StorageDeviceSeekPenaltyProperty
+        public int QueryType;       // 0 = PropertyStandardQuery
+        public byte AdditionalParameters;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct DEVICE_SEEK_PENALTY_DESCRIPTOR
+    {
+        public uint Version;
+        public uint Size;
+        [MarshalAs(UnmanagedType.U1)] public bool IncursSeekPenalty;
+    }
+
+    /// <summary>스캔 중 이동식 미디어 없음 등의 시스템 오류 대화상자를 억제한다.</summary>
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern bool SetThreadErrorMode(uint dwNewMode, out uint lpOldMode);
+
+    internal const uint SEM_FAILCRITICALERRORS = 0x0001;
+}
+
+internal sealed class SafeFindHandle : SafeHandleZeroOrMinusOneIsInvalid
+{
+    public SafeFindHandle() : base(true) { }
+    protected override bool ReleaseHandle() => Win32.FindClose(handle);
+}
