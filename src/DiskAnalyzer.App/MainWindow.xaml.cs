@@ -44,11 +44,18 @@ public partial class MainWindow : Window
         _vm.ViewRefreshed += (_, _) => UpdateTreemap();
 
         // [검색] 버튼과 Enter 가 같은 경로를 타도록 탭 전환은 여기서 한다. 결과는 폴더 목록에 나온다.
-        _vm.SearchStarted += (_, _) => { if (Tabs.SelectedIndex != 0) Tabs.SelectedIndex = 0; };
+        _vm.SearchStarted += (_, _) => EnsureFolderListVisible();
 
         Treemap.HoverChanged += OnTreemapHover;
         Treemap.ItemActivated += OnTreemapActivated;
-        Treemap.ItemSelected += (_, item) => TreemapInfo.Text = Describe(item);
+        Treemap.ItemSelected += OnTreemapSelected;
+
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(MainViewModel.IsSplitView)) return;
+            ApplyLayout();
+            UpdateTreemap();
+        };
 
         SourceInitialized += (_, _) => ApplyDarkTitleBar();
         Loaded += OnLoadedStartupScan;
@@ -151,15 +158,66 @@ public partial class MainWindow : Window
     {
         if (!IsLoaded || e.OriginalSource != Tabs) return;
 
+        ApplyLayout();
+        _vm.ActiveTab = (LiveTab)Tabs.SelectedIndex;
+        UpdateTreemap();
+    }
+
+    /// <summary>
+    /// 탭 + 분할 보기 상태에 따라 무엇을 보여 줄지 정한다.
+    ///  - 폴더 / Treemap 탭: 이동 막대를 함께 쓴다.
+    ///  - 분할 보기가 켜져 있으면 두 탭 모두에서 폴더(좌) + Treemap(우)을 나란히 보여 준다.
+    ///  - 꺼져 있으면 탭이 고른 쪽 하나만 보여 준다.
+    /// </summary>
+    private void ApplyLayout()
+    {
         var tab = (LiveTab)Tabs.SelectedIndex;
-        FolderPanel.Visibility = tab == LiveTab.Folder ? Visibility.Visible : Visibility.Collapsed;
+        bool inSplitHost = tab is LiveTab.Folder or LiveTab.Treemap;
+        bool both = inSplitHost && _vm.IsSplitView;
+        bool folder = both || tab == LiveTab.Folder;
+        bool treemap = both || tab == LiveTab.Treemap;
+
+        NavBar.Visibility = inSplitHost ? Visibility.Visible : Visibility.Collapsed;
+        SplitHost.Visibility = inSplitHost ? Visibility.Visible : Visibility.Collapsed;
         LargeFilesPanel.Visibility = tab == LiveTab.LargeFiles ? Visibility.Visible : Visibility.Collapsed;
         FileTypesPanel.Visibility = tab == LiveTab.FileTypes ? Visibility.Visible : Visibility.Collapsed;
-        TreemapPanel.Visibility = tab == LiveTab.Treemap ? Visibility.Visible : Visibility.Collapsed;
         CleanupPanel.Visibility = tab == LiveTab.Cleanup ? Visibility.Visible : Visibility.Collapsed;
 
-        _vm.ActiveTab = tab;
-        if (tab == LiveTab.Treemap) UpdateTreemap();
+        FolderPanel.Visibility = folder ? Visibility.Visible : Visibility.Collapsed;
+        TreemapPanel.Visibility = treemap ? Visibility.Visible : Visibility.Collapsed;
+        SplitSplitter.Visibility = both ? Visibility.Visible : Visibility.Collapsed;
+
+        // 폴더 패널이 절반 너비로 줄어들면 안내 문구가 오른쪽 버튼과 겹치므로 숨긴다(툴팁으로 대체).
+        FolderSelectionHint.Visibility = both ? Visibility.Collapsed : Visibility.Visible;
+        FolderSelectionText.ToolTip = both ? FolderSelectionHint.Text : null;
+
+        // 나뉘어 있는 동안 사용자가 끌어 정한 너비는 유지한다. 분할이 풀릴 때 기억했다가 다시 켜면 복원한다.
+        if (both)
+        {
+            FolderColumn.Width = _splitFolderWidth;
+            SplitterColumn.Width = GridLength.Auto;
+            TreemapColumn.Width = _splitTreemapWidth;
+        }
+        else
+        {
+            if (SplitterColumn.Width.IsAuto && TreemapColumn.Width.Value > 0)
+            {
+                _splitFolderWidth = FolderColumn.Width;
+                _splitTreemapWidth = TreemapColumn.Width;
+            }
+            FolderColumn.Width = folder ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+            SplitterColumn.Width = new GridLength(0);
+            TreemapColumn.Width = treemap ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        }
+    }
+
+    private GridLength _splitFolderWidth = new(1.15, GridUnitType.Star);
+    private GridLength _splitTreemapWidth = new(1, GridUnitType.Star);
+
+    /// <summary>검색 결과나 폴더 이동 결과를 보여 줄 폴더 목록이 안 보이면 폴더 탭으로 옮긴다.</summary>
+    private void EnsureFolderListVisible()
+    {
+        if (FolderPanel.Visibility != Visibility.Visible) Tabs.SelectedIndex = (int)LiveTab.Folder;
     }
 
     private void UpdateTreemap()
@@ -173,8 +231,11 @@ public partial class MainWindow : Window
 
     private void OnTreemapHover(object? sender, TreemapControl.TreemapItem? item)
         => TreemapInfo.Text = item == null
-            ? "사각형 위에 마우스를 올리면 정보가 표시됩니다. 더블 클릭하면 해당 폴더로 이동합니다."
+            ? TreemapHint
             : Describe(item);
+
+    private const string TreemapHint =
+        "사각형 위에 마우스를 올리면 정보가 표시됩니다. 클릭하면 목록에서 선택되고, 더블 클릭하면 그 폴더로 들어갑니다.";
 
     private static string Describe(TreemapControl.TreemapItem item)
     {
@@ -185,15 +246,14 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Treemap 에서 폴더를 더블 클릭하면 <strong>폴더 탭으로 이동해 그 폴더를 연다</strong>.
-    /// Treemap 은 "어디가 큰지"를 찾는 화면이고, 실제로 무엇이 들어 있는지는 폴더 탭에서 본다.
-    /// 탭을 먼저 바꾸고 이동해야 폴더 탭이 곧바로 대상 폴더를 그린다.
+    /// Treemap 에서 폴더를 더블 클릭하면 <strong>탭을 바꾸지 않고 그 폴더로 들어간다</strong>.
+    /// 폴더 탭과 같은 위치 상태(_currentDirId)를 쓰므로 뒤로/앞으로/상위/루트 버튼과 경로 막대가
+    /// 그대로 동작하고, 분할 보기에서는 왼쪽 폴더 목록도 함께 따라온다.
     /// </summary>
     private void OnTreemapActivated(object? sender, TreemapControl.TreemapItem item)
     {
         if (item.IsDirectory)
         {
-            Tabs.SelectedIndex = (int)LiveTab.Folder;
             _vm.Navigate(item.Id);
             FolderList.SelectedItems.Clear();
         }
@@ -201,6 +261,63 @@ public partial class MainWindow : Window
         {
             ShellService.OpenInExplorer(item.FullPath, false);
         }
+    }
+
+    // ---------------------------------------------------------------- 폴더 목록 <-> Treemap 선택 동기화
+
+    private bool _syncingSelection;
+
+    /// <summary>폴더 목록에서 고른 항목을 Treemap 에서 테두리로 강조한다.</summary>
+    private void SyncListSelectionToTreemap()
+    {
+        if (_syncingSelection || TreemapPanel.Visibility != Visibility.Visible) return;
+        Treemap.SetSelection(FolderList.SelectedItems.OfType<EntryRow>().Select(r => (r.IsDirectory, r.Id)));
+    }
+
+    /// <summary>
+    /// Treemap 에서 사각형을 누르면 폴더 목록에서 그 항목을 선택하고 스크롤한다.
+    /// Treemap 은 여러 단계를 겹쳐 그리므로 깊은 곳을 눌렀다면, 현재 폴더 바로 아래에서
+    /// 그 사각형을 품고 있는 항목(폴더)을 대신 선택한다.
+    /// </summary>
+    private void OnTreemapSelected(object? sender, TreemapControl.TreemapItem item)
+    {
+        TreemapInfo.Text = Describe(item);
+
+        _syncingSelection = true;
+        try
+        {
+            Treemap.SetSelection(new[] { (item.IsDirectory, item.Id) });
+            if (FolderPanel.Visibility != Visibility.Visible || _vm.IsSearchMode) return;
+
+            var target = ResolveListRow(item);
+            FolderList.SelectedItems.Clear();
+            if (target == null) return;
+            FolderList.SelectedItem = target;
+            FolderList.ScrollIntoView(target);
+        }
+        finally
+        {
+            _syncingSelection = false;
+        }
+    }
+
+    private EntryRow? ResolveListRow(TreemapControl.TreemapItem item)
+    {
+        bool isDir = item.IsDirectory;
+        int id = item.Id;
+
+        if (item.Depth > 0 && _vm.CurrentResult?.Store is { } store)
+        {
+            int dir = isDir ? id : store.GetFileParent(id);
+            int child = store.ChildOnPathTo(_vm.CurrentDirectoryId, dir);
+            if (child < 0) return null;
+            isDir = true;
+            id = child;
+        }
+
+        foreach (var row in _vm.Rows)
+            if (row.IsDirectory == isDir && row.Id == id) return row;
+        return null;
     }
 
     // ---------------------------------------------------------------- 탐색
@@ -223,7 +340,7 @@ public partial class MainWindow : Window
 
         if (row.IsDirectory)
         {
-            if (Tabs.SelectedIndex != 0) Tabs.SelectedIndex = 0;
+            EnsureFolderListVisible();
             _vm.Navigate(row.Id);
         }
         else
@@ -402,6 +519,8 @@ public partial class MainWindow : Window
             ? "0개 항목 선택됨"
             : $"{total:N0}개 항목 선택됨 (폴더 {folders:N0} · 파일 {files:N0})";
         FolderSelectionSize.Text = SizeFormatter.Format(bytes);
+
+        SyncListSelectionToTreemap();
     }
 
     private void OnClearFolderSelection(object sender, RoutedEventArgs e)
@@ -565,13 +684,13 @@ public partial class MainWindow : Window
 
         try
         {
-            switch (Tabs.SelectedIndex)
+            switch ((LiveTab)Tabs.SelectedIndex)
             {
-                case 1:
+                case LiveTab.LargeFiles:
                     if (csv) ExportService.ExportCsv(dialog.FileName, _vm.TopFiles);
                     else ExportService.ExportJson(dialog.FileName, _vm.TopFiles);
                     break;
-                case 2:
+                case LiveTab.FileTypes:
                     if (csv) ExportService.ExportExtensionsCsv(dialog.FileName, _vm.Extensions);
                     else ExportService.ExportJson(dialog.FileName, _vm.ExtensionFiles);
                     break;

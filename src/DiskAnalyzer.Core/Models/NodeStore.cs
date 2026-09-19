@@ -410,6 +410,28 @@ public sealed class NodeStore
     public int GetParent(int dirId)
         => (uint)dirId < (uint)_dirCount ? _dirParent[dirId] : -1;
 
+    /// <summary>파일이 속한 폴더 id. 삭제되었거나 범위 밖이면 -1.</summary>
+    public int GetFileParent(int fileIndex)
+        => (uint)fileIndex < (uint)_fileCount ? _fileParent[fileIndex] : -1;
+
+    /// <summary>
+    /// <paramref name="dirId"/> 아래에서 <paramref name="ancestorDirId"/> 의 <strong>직속 자식</strong>이 되는 폴더를 찾는다.
+    /// Treemap 은 여러 단계를 겹쳐 그리므로, 깊은 곳의 사각형을 눌러도 폴더 목록에서는
+    /// "현재 폴더 바로 아래의 어느 항목 안쪽인지"를 선택해 줘야 한다. 하위가 아니면 -1.
+    /// </summary>
+    public int ChildOnPathTo(int ancestorDirId, int dirId)
+    {
+        int cur = dirId;
+        while ((uint)cur < (uint)_dirCount)
+        {
+            int parent = _dirParent[cur];
+            if (parent == ancestorDirId) return cur;
+            if (parent < 0) return -1;
+            cur = parent;
+        }
+        return -1;
+    }
+
     /// <summary>7. Breadcrumb - 루트부터 현재 폴더까지.</summary>
     public IReadOnlyList<(int Id, string Name)> GetAncestors(int dirId)
     {

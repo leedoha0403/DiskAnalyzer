@@ -58,11 +58,12 @@ public sealed class ViewSnapshot
 }
 
 /// <summary>스캔 중 Aggregator 가 어떤 스냅샷을 만들지 UI 가 알려 준다.</summary>
+/// <summary>값은 화면의 탭 순서와 같다(MainWindow 가 SelectedIndex 를 그대로 캐스팅한다).</summary>
 public enum LiveTab
 {
     Folder,
+    Treemap,
     LargeFiles,
     FileTypes,
-    Treemap,
     Cleanup,
 }

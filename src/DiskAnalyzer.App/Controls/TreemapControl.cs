@@ -59,12 +59,33 @@ public sealed class TreemapControl : FrameworkElement
         nameof(LabelBrush), typeof(Brush), typeof(TreemapControl),
         new FrameworkPropertyMetadata(Brushes.White, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    public static readonly DependencyProperty SelectionBrushProperty = DependencyProperty.Register(
+        nameof(SelectionBrush), typeof(Brush), typeof(TreemapControl),
+        new FrameworkPropertyMetadata(Brushes.Orange, FrameworkPropertyMetadataOptions.AffectsRender));
+
     public Brush StrokeBrush { get => (Brush)GetValue(StrokeBrushProperty); set => SetValue(StrokeBrushProperty, value); }
     public Brush LabelBrush { get => (Brush)GetValue(LabelBrushProperty); set => SetValue(LabelBrushProperty, value); }
+
+    /// <summary>폴더 목록에서 선택한 항목을 Treemap 에서 강조하는 테두리 색.</summary>
+    public Brush SelectionBrush { get => (Brush)GetValue(SelectionBrushProperty); set => SetValue(SelectionBrushProperty, value); }
+
+    // 선택 강조. (폴더/파일 구분 + id) 를 한 개의 long 키로 만들어 렌더링 중 조회 비용을 낮춘다.
+    private readonly HashSet<long> _selected = new();
+
+    private static long KeyOf(bool isDirectory, int id) => ((isDirectory ? 1L : 0L) << 32) | (uint)id;
+
+    /// <summary>선택 강조를 바꾼다. 레이아웃은 다시 계산하지 않고 다시 그리기만 한다.</summary>
+    public void SetSelection(IEnumerable<(bool IsDirectory, int Id)> items)
+    {
+        _selected.Clear();
+        foreach (var (isDir, id) in items) _selected.Add(KeyOf(isDir, id));
+        InvalidateVisual();
+    }
 
     /// <summary>스캔 완료 후: 저장소를 직접 타고 내려가며 여러 단계를 그린다.</summary>
     public void SetSource(NodeStore? store, int dirId)
     {
+        if (dirId != _dirId) _selected.Clear();   // 다른 폴더로 옮겼으면 이전 선택 강조는 의미가 없다
         _store = store;
         _flatRows = null;
         _dirId = dirId;
@@ -283,6 +304,20 @@ public sealed class TreemapControl : FrameworkElement
                 MaxLineCount = 1,
             };
             dc.DrawText(text, new Point(item.Bounds.X + 4, item.Bounds.Y + 1));
+        }
+
+        if (_selected.Count > 0)
+        {
+            var sp = new Pen(SelectionBrush, 3d);
+            sp.Freeze();
+            foreach (var item in _items)
+            {
+                if (!_selected.Contains(KeyOf(item.IsDirectory, item.Id))) continue;
+                // 테두리가 이웃 사각형으로 번지지 않게 안쪽으로 절반만큼 줄여 그린다.
+                var r = item.Bounds;
+                if (r.Width <= 3 || r.Height <= 3) continue;
+                dc.DrawRectangle(null, sp, new Rect(r.X + 1.5, r.Y + 1.5, r.Width - 3, r.Height - 3));
+            }
         }
 
         if (_hovered != null)

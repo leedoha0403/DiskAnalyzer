@@ -206,9 +206,9 @@
                         <Grid>
                             <TabControl x:Name="Tabs" SelectionChanged="OnTabChanged" HorizontalAlignment="Left">
                                 <TabItem Header="폴더" />
+                                <TabItem Header="Treemap" />
                                 <TabItem Header="큰 파일" />
                                 <TabItem Header="파일 유형" />
-                                <TabItem Header="Treemap" />
                                 <TabItem Header="정리 추천" />
                             </TabControl>
 
@@ -266,129 +266,166 @@
                         </Grid>
                     </Border>
 
+                    <!-- 폴더 / Treemap 이 함께 쓰는 이동 막대 (7. Breadcrumb Navigation) -->
+                    <Border x:Name="NavBar" DockPanel.Dock="Top" Padding="12,8" Background="{DynamicResource SurfaceAltBrush}"
+                            BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,0,0,1">
+                        <DockPanel>
+                            <ToggleButton DockPanel.Dock="Right" Content="분할 보기" IsChecked="{Binding IsSplitView}"
+                                          AutomationProperties.AutomationId="SplitToggle" Margin="12,0,0,0" Padding="10,3"
+                                          ToolTip="폴더 목록과 Treemap 을 나란히 표시합니다 (다시 누르면 원래대로)" />
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="◀" Command="{Binding BackCommand}" Style="{StaticResource LinkButton}"
+                                        ToolTip="뒤로" Width="30" />
+                                <Button Content="▶" Command="{Binding ForwardCommand}" Style="{StaticResource LinkButton}"
+                                        ToolTip="앞으로" Width="30" />
+                                <Button Content="▲" Command="{Binding UpCommand}" Style="{StaticResource LinkButton}"
+                                        ToolTip="상위 폴더" Width="30" />
+                                <Button Content="루트" Command="{Binding RootCommand}" Style="{StaticResource LinkButton}"
+                                        Margin="0,0,10,0" />
+                                <Border Width="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,2,10,2" />
+                                <ItemsControl ItemsSource="{Binding Breadcrumb}" VerticalAlignment="Center">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="{Binding Name}" Tag="{Binding Id}"
+                                                        Click="OnBreadcrumbClick" Style="{StaticResource LinkButton}" />
+                                                <TextBlock Text="›" Foreground="{DynamicResource TextDimBrush}"
+                                                           VerticalAlignment="Center" Margin="2,0">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsLast}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
                     <Grid x:Name="TabHost">
 
-                        <!-- ========== 폴더 탭 ========== -->
-                        <DockPanel x:Name="FolderPanel">
-                            <!-- 7. Breadcrumb Navigation -->
-                            <Border DockPanel.Dock="Top" Padding="12,8" Background="{DynamicResource SurfaceAltBrush}"
-                                    BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,0,0,1">
-                                <StackPanel Orientation="Horizontal">
-                                    <Button Content="◀" Command="{Binding BackCommand}" Style="{StaticResource LinkButton}"
-                                            ToolTip="뒤로" Width="30" />
-                                    <Button Content="▶" Command="{Binding ForwardCommand}" Style="{StaticResource LinkButton}"
-                                            ToolTip="앞으로" Width="30" />
-                                    <Button Content="▲" Command="{Binding UpCommand}" Style="{StaticResource LinkButton}"
-                                            ToolTip="상위 폴더" Width="30" />
-                                    <Button Content="루트" Command="{Binding RootCommand}" Style="{StaticResource LinkButton}"
-                                            Margin="0,0,10,0" />
-                                    <Border Width="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,2,10,2" />
-                                    <ItemsControl ItemsSource="{Binding Breadcrumb}" VerticalAlignment="Center">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel Orientation="Horizontal" />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <StackPanel Orientation="Horizontal">
-                                                    <Button Content="{Binding Name}" Tag="{Binding Id}"
-                                                            Click="OnBreadcrumbClick" Style="{StaticResource LinkButton}" />
-                                                    <TextBlock Text="›" Foreground="{DynamicResource TextDimBrush}"
-                                                               VerticalAlignment="Center" Margin="2,0">
-                                                        <TextBlock.Style>
-                                                            <Style TargetType="TextBlock">
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsLast}" Value="True">
-                                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </TextBlock.Style>
-                                                    </TextBlock>
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
+                        <!-- ========== 폴더 + Treemap (분할 보기 토글 시 나란히) ========== -->
+                        <Grid x:Name="SplitHost">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition x:Name="FolderColumn" Width="*" />
+                                <ColumnDefinition x:Name="SplitterColumn" Width="0" />
+                                <ColumnDefinition x:Name="TreemapColumn" Width="0" />
+                            </Grid.ColumnDefinitions>
 
-                            <!-- 폴더 탭 다중 선택 + 삭제 (큰 파일 탭과 동일한 UX) -->
-                            <Border DockPanel.Dock="Bottom" Padding="12,9" Background="{DynamicResource SurfaceAltBrush}"
-                                    BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0">
-                                <Grid>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock x:Name="FolderSelectionText" Style="{StaticResource H2}"
-                                                   Text="0개 항목 선택됨" />
-                                        <TextBlock Text="  ·  총 용량 " Style="{StaticResource Caption}" VerticalAlignment="Center" />
-                                        <TextBlock x:Name="FolderSelectionSize" Style="{StaticResource Numeric}"
-                                                   FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Text="0 B" />
-                                        <TextBlock Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="16,0,0,0"
-                                                   Text="Ctrl+클릭 개별 선택 · Shift+클릭 범위 선택 · Ctrl+A 전체 선택 · 폴더는 하위 전체가 삭제됩니다" />
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                        <Button Content="선택 해제" Click="OnClearFolderSelection" Margin="0,0,8,0" />
-                                        <Button Content="삭제..." AutomationProperties.AutomationId="FolderDelete"
-                                                Style="{StaticResource AccentButton}"
-                                                Click="OnDeleteSelectedFolderItems" />
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
+                            <!-- ========== 폴더 탭 ========== -->
+                            <DockPanel x:Name="FolderPanel" Grid.Column="0">
+                                <!-- 폴더 탭 다중 선택 + 삭제 (큰 파일 탭과 동일한 UX) -->
+                                <Border DockPanel.Dock="Bottom" Padding="12,9" Background="{DynamicResource SurfaceAltBrush}"
+                                        BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0">
+                                    <Grid>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock x:Name="FolderSelectionText" Style="{StaticResource H2}"
+                                                       Text="0개 항목 선택됨" />
+                                            <TextBlock Text="  ·  총 용량 " Style="{StaticResource Caption}" VerticalAlignment="Center" />
+                                            <TextBlock x:Name="FolderSelectionSize" Style="{StaticResource Numeric}"
+                                                       FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Text="0 B" />
+                                            <TextBlock x:Name="FolderSelectionHint" Style="{StaticResource Caption}"
+                                                       VerticalAlignment="Center" Margin="16,0,0,0"
+                                                       Text="Ctrl+클릭 개별 선택 · Shift+클릭 범위 선택 · Ctrl+A 전체 선택 · 폴더는 하위 전체가 삭제됩니다" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <Button Content="선택 해제" Click="OnClearFolderSelection" Margin="0,0,8,0" />
+                                            <Button Content="삭제..." AutomationProperties.AutomationId="FolderDelete"
+                                                    Style="{StaticResource AccentButton}"
+                                                    Click="OnDeleteSelectedFolderItems" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
 
-                            <ListView x:Name="FolderList" AutomationProperties.AutomationId="FolderList" Style="{StaticResource DataList}"
-                                      ItemsSource="{Binding Rows}"
-                                      SelectedItem="{Binding SelectedRow}"
-                                      SelectionMode="Extended"
-                                      SelectionChanged="OnFolderSelectionChanged"
-                                      ContextMenu="{StaticResource RowMenu}"
-                                      MouseDoubleClick="OnRowDoubleClick"
-                                      GridViewColumnHeader.Click="OnHeaderClick">
-                                <ListView.View>
-                                    <GridView>
-                                        <GridViewColumn Width="300" CellTemplate="{StaticResource NameCell}">
-                                            <GridViewColumn.Header>
-                                                <GridViewColumnHeader Content="이름" Tag="Name" />
-                                            </GridViewColumn.Header>
-                                        </GridViewColumn>
-                                        <GridViewColumn Width="110" CellTemplate="{StaticResource SizeCell}">
-                                            <GridViewColumn.Header>
-                                                <GridViewColumnHeader Content="크기" Tag="Size" HorizontalContentAlignment="Right" />
-                                            </GridViewColumn.Header>
-                                        </GridViewColumn>
-                                        <GridViewColumn Width="180" CellTemplate="{StaticResource RatioCell}">
-                                            <GridViewColumn.Header>
-                                                <GridViewColumnHeader Content="점유율" Tag="Size" />
-                                            </GridViewColumn.Header>
-                                        </GridViewColumn>
-                                        <GridViewColumn Width="90" DisplayMemberBinding="{Binding FileCountText}">
-                                            <GridViewColumn.Header>
-                                                <GridViewColumnHeader Content="파일" Tag="FileCount" />
-                                            </GridViewColumn.Header>
-                                        </GridViewColumn>
-                                        <GridViewColumn Width="80" DisplayMemberBinding="{Binding DirCountText}">
-                                            <GridViewColumn.Header>
-                                                <GridViewColumnHeader Content="폴더" Tag="DirectoryCount" />
-                                            </GridViewColumn.Header>
-                                        </GridViewColumn>
-                                        <GridViewColumn Width="130" DisplayMemberBinding="{Binding ModifiedText}">
-                                            <GridViewColumn.Header>
-                                                <GridViewColumnHeader Content="최근 수정일" Tag="Modified" />
-                                            </GridViewColumn.Header>
-                                        </GridViewColumn>
-                                        <GridViewColumn Width="170" CellTemplate="{StaticResource CategoryCell}">
-                                            <GridViewColumn.Header>
-                                                <GridViewColumnHeader Content="카테고리" Tag="Category" />
-                                            </GridViewColumn.Header>
-                                        </GridViewColumn>
-                                        <GridViewColumn Width="520" DisplayMemberBinding="{Binding FullPath}">
-                                            <GridViewColumn.Header>
-                                                <GridViewColumnHeader Content="전체 경로" Tag="FullPath" />
-                                            </GridViewColumn.Header>
-                                        </GridViewColumn>
-                                    </GridView>
-                                </ListView.View>
-                            </ListView>
-                        </DockPanel>
+                                <ListView x:Name="FolderList" AutomationProperties.AutomationId="FolderList" Style="{StaticResource DataList}"
+                                          ItemsSource="{Binding Rows}"
+                                          SelectedItem="{Binding SelectedRow}"
+                                          SelectionMode="Extended"
+                                          SelectionChanged="OnFolderSelectionChanged"
+                                          ContextMenu="{StaticResource RowMenu}"
+                                          MouseDoubleClick="OnRowDoubleClick"
+                                          GridViewColumnHeader.Click="OnHeaderClick">
+                                    <ListView.View>
+                                        <GridView>
+                                            <GridViewColumn Width="300" CellTemplate="{StaticResource NameCell}">
+                                                <GridViewColumn.Header>
+                                                    <GridViewColumnHeader Content="이름" Tag="Name" />
+                                                </GridViewColumn.Header>
+                                            </GridViewColumn>
+                                            <GridViewColumn Width="110" CellTemplate="{StaticResource SizeCell}">
+                                                <GridViewColumn.Header>
+                                                    <GridViewColumnHeader Content="크기" Tag="Size" HorizontalContentAlignment="Right" />
+                                                </GridViewColumn.Header>
+                                            </GridViewColumn>
+                                            <GridViewColumn Width="180" CellTemplate="{StaticResource RatioCell}">
+                                                <GridViewColumn.Header>
+                                                    <GridViewColumnHeader Content="점유율" Tag="Size" />
+                                                </GridViewColumn.Header>
+                                            </GridViewColumn>
+                                            <GridViewColumn Width="90" DisplayMemberBinding="{Binding FileCountText}">
+                                                <GridViewColumn.Header>
+                                                    <GridViewColumnHeader Content="파일" Tag="FileCount" />
+                                                </GridViewColumn.Header>
+                                            </GridViewColumn>
+                                            <GridViewColumn Width="80" DisplayMemberBinding="{Binding DirCountText}">
+                                                <GridViewColumn.Header>
+                                                    <GridViewColumnHeader Content="폴더" Tag="DirectoryCount" />
+                                                </GridViewColumn.Header>
+                                            </GridViewColumn>
+                                            <GridViewColumn Width="130" DisplayMemberBinding="{Binding ModifiedText}">
+                                                <GridViewColumn.Header>
+                                                    <GridViewColumnHeader Content="최근 수정일" Tag="Modified" />
+                                                </GridViewColumn.Header>
+                                            </GridViewColumn>
+                                            <GridViewColumn Width="170" CellTemplate="{StaticResource CategoryCell}">
+                                                <GridViewColumn.Header>
+                                                    <GridViewColumnHeader Content="카테고리" Tag="Category" />
+                                                </GridViewColumn.Header>
+                                            </GridViewColumn>
+                                            <GridViewColumn Width="520" DisplayMemberBinding="{Binding FullPath}">
+                                                <GridViewColumn.Header>
+                                                    <GridViewColumnHeader Content="전체 경로" Tag="FullPath" />
+                                                </GridViewColumn.Header>
+                                            </GridViewColumn>
+                                        </GridView>
+                                    </ListView.View>
+                                </ListView>
+                            </DockPanel>
+
+
+                            <GridSplitter x:Name="SplitSplitter" Grid.Column="1" Width="6"
+                                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                          ResizeBehavior="PreviousAndNext" ResizeDirection="Columns"
+                                          Background="{DynamicResource BorderBrushSoft}" Visibility="Collapsed"
+                                          ToolTip="드래그해서 폴더 목록과 Treemap 의 너비를 조절합니다" />
+
+                            <!-- ========== 14. Treemap 탭 ========== -->
+                            <DockPanel x:Name="TreemapPanel" Grid.Column="2" Visibility="Collapsed">
+                                <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceAltBrush}" Padding="12,7"
+                                        BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0">
+                                    <TextBlock x:Name="TreemapInfo" Style="{StaticResource Caption}"
+                                               TextTrimming="CharacterEllipsis"
+                                               Text="사각형 위에 마우스를 올리면 정보가 표시됩니다. 더블 클릭하면 그 폴더로 들어가고, 위쪽 ▲ / 루트 버튼으로 돌아옵니다." />
+                                </Border>
+                                <ctl:TreemapControl x:Name="Treemap"
+                                                    StrokeBrush="{DynamicResource TreemapStrokeBrush}"
+                                                    LabelBrush="{DynamicResource TreemapLabelBrush}"
+                                                    SelectionBrush="{DynamicResource AccentBrush}" />
+                            </DockPanel>
+
+                        </Grid>
 
                         <!-- ========== 9. 큰 파일 탭 ========== -->
                         <DockPanel x:Name="LargeFilesPanel" Visibility="Collapsed">
@@ -560,19 +597,6 @@
                                 </ListView.View>
                             </ListView>
                         </Grid>
-
-                        <!-- ========== 14. Treemap 탭 ========== -->
-                        <DockPanel x:Name="TreemapPanel" Visibility="Collapsed">
-                            <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceAltBrush}" Padding="12,7"
-                                    BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0">
-                                <TextBlock x:Name="TreemapInfo" Style="{StaticResource Caption}"
-                                           TextTrimming="CharacterEllipsis"
-                                           Text="사각형 위에 마우스를 올리면 정보가 표시됩니다. 더블 클릭하면 해당 폴더로 이동합니다." />
-                            </Border>
-                            <ctl:TreemapControl x:Name="Treemap"
-                                                StrokeBrush="{DynamicResource TreemapStrokeBrush}"
-                                                LabelBrush="{DynamicResource TreemapLabelBrush}" />
-                        </DockPanel>
 
                         <!-- ========== 53~66. 정리 추천 탭 ========== -->
                         <Grid x:Name="CleanupPanel" Visibility="Collapsed" DataContext="{Binding Cleanup}">

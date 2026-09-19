@@ -115,6 +115,26 @@ public class SearchTests
     }
 
     [Fact]
+    public void ChildOnPathTo_Returns_DirectChild_Of_Ancestor()
+    {
+        var store = Build();
+        Assert.Equal(1, store.ChildOnPathTo(NodeStore.RootId, 2));   // B 는 루트 기준으로 A 아래
+        Assert.Equal(2, store.ChildOnPathTo(1, 2));                  // A 기준으로는 B 자신
+        Assert.Equal(3, store.ChildOnPathTo(NodeStore.RootId, 3));
+        Assert.Equal(-1, store.ChildOnPathTo(3, 2));                 // C 는 B 의 조상이 아니다
+        Assert.Equal(-1, store.ChildOnPathTo(2, 2));                 // 자기 자신은 하위가 아니다
+    }
+
+    [Fact]
+    public void GetFileParent_Returns_Owning_Directory()
+    {
+        var store = Build();
+        int fileInB = store.Search("report_b").Single().Id;
+        Assert.Equal(2, store.GetFileParent(fileInB));
+        Assert.Equal(-1, store.GetFileParent(9999));
+    }
+
+    [Fact]
     public void Blank_Term_Returns_Nothing()
     {
         var outcome = Build().SearchWithCount("  ");

@@ -183,6 +183,10 @@ public sealed class MainViewModel : ObservableObject
     private EntryRow? _selectedRow;
     public EntryRow? SelectedRow { get => _selectedRow; set => Set(ref _selectedRow, value); }
 
+    private bool _isSplitView;
+    /// <summary>폴더 목록과 Treemap 을 나란히 보여 줄지(폴더/Treemap 탭에서만 의미가 있다).</summary>
+    public bool IsSplitView { get => _isSplitView; set => Set(ref _isSplitView, value); }
+
     private bool _showPerfMonitor;
     public bool ShowPerfMonitor { get => _showPerfMonitor; set => Set(ref _showPerfMonitor, value); }
 
