@@ -568,53 +568,111 @@ public sealed class NodeStore
         return rows;
     }
 
-    /// <summary>12. 검색 - 파일/폴더 이름 부분 일치. 결과 수 상한으로 UI 폭주를 막는다.</summary>
-    public List<EntryRow> Search(string term, int max = 5000, FilterOptions? filter = null)
+    /// <summary>12. 검색 - <see cref="SearchWithCount"/> 의 행 목록만 돌려주는 간편 버전.</summary>
+    public List<EntryRow> Search(string term, int max = 5000, FilterOptions? filter = null, int scopeDirId = RootId)
+        => SearchWithCount(term, max, filter, scopeDirId).Rows;
+
+    /// <summary>
+    /// 12. 검색 - 파일/폴더 이름. 와일드카드(`*` `?`)가 없으면 부분 일치, 있으면 이름 전체 glob(<see cref="NameMatcher"/>).
+    ///
+    /// 표시 상한(<paramref name="max"/>)은 <strong>크기 상위 K 개</strong>를 뜻한다. 예전처럼 앞에서부터 K 건을
+    /// 채우고 자른 뒤 정렬하면 흔한 검색어에서 정작 큰 항목이 결과에서 빠진다.
+    /// 최소 힙(크기 기준)으로 O(N log K) 에 상위 K 개만 유지하고, 행(EntryRow)은 살아남은 K 개에 대해서만 만든다.
+    ///
+    /// <paramref name="scopeDirId"/> 가 루트가 아니면 그 폴더의 하위만 찾는다(폴더 자신은 제외).
+    /// "자식 id &gt; 부모 id" 불변식 덕분에 하위 판정은 폴더 배열 오름차순 1패스로 끝난다.
+    /// </summary>
+    public SearchOutcome SearchWithCount(string term, int max = 5000, FilterOptions? filter = null, int scopeDirId = RootId)
     {
-        var rows = new List<EntryRow>(256);
-        if (string.IsNullOrWhiteSpace(term)) return rows;
+        var matcher = new NameMatcher(term ?? string.Empty);
+        if (matcher.IsEmpty || max <= 0) return new SearchOutcome { Rows = new List<EntryRow>(), TotalMatches = 0 };
 
-        ReadOnlySpan<char> needle = term.AsSpan().Trim();
-        long denom = TotalSize > 0 ? TotalSize : 1;
+        bool[]? inScope = null;
+        int firstDir = 1;
+        if (scopeDirId > RootId && scopeDirId < _dirCount)
+        {
+            inScope = new bool[_dirCount];
+            inScope[scopeDirId] = true;
+            for (int i = scopeDirId + 1; i < _dirCount; i++)
+            {
+                int p = _dirParent[i];
+                if (p >= scopeDirId && p < i && inScope[p]) inScope[i] = true;
+            }
+            firstDir = scopeDirId + 1;
+        }
 
-        for (int i = 1; i < _dirCount && rows.Count < max; i++)
+        var heap = new PriorityQueue<(bool IsDir, int Id), long>(Math.Min(max, 1024));
+        int total = 0;
+
+        for (int i = firstDir; i < _dirCount; i++)
         {
             if (_dirParent[i] < 0 || _dirDeleted[i]) continue;
-            var name = _pool.Get(_dirName[i]);
-            if (name.IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            if (inScope != null && !inScope[i]) continue;
             long size = _dirTotalSize[i];
             if (filter is { MinSize: > 0 } && size < filter.MinSize) continue;
+            if (!matcher.IsMatch(_pool.Get(_dirName[i]))) continue;
 
-            rows.Add(new EntryRow
-            {
-                Kind = RowKind.Directory,
-                Id = i,
-                Name = new string(name),
-                FullPath = GetDirectoryPath(i),
-                Size = size,
-                Ratio = (double)size / denom,
-                FileCount = _dirTotalFiles[i],
-                DirectoryCount = _dirTotalDirs[i],
-                Modified = ToDateTime(_dirTime[i]),
-                Category = (CategoryFlags)_dirCat[i],
-            });
+            total++;
+            OfferMatch(heap, max, (true, i), size);
         }
 
-        for (int f = 0; f < _fileCount && rows.Count < max; f++)
+        for (int f = 0; f < _fileCount; f++)
         {
-            if (_fileParent[f] < 0) continue;
-            var name = _pool.Get(_fileName[f]);
-            if (name.IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            int parent = _fileParent[f];
+            if (parent < 0) continue;
+            if (inScope != null && ((uint)parent >= (uint)inScope.Length || !inScope[parent])) continue;
             long size = _fileSize[f];
             if (filter is { MinSize: > 0 } && size < filter.MinSize) continue;
-            string ext = Extensions.NameOf(_fileExt[f]);
-            if (filter != null && !MatchesExtension(ext, filter.ExtensionPattern)) continue;
-            rows.Add(MakeFileRow(f, new string(name), ext, size, denom));
+            if (!matcher.IsMatch(_pool.Get(_fileName[f]))) continue;
+            if (filter != null && !MatchesExtension(Extensions.NameOf(_fileExt[f]), filter.ExtensionPattern)) continue;
+
+            total++;
+            OfferMatch(heap, max, (false, f), size);
         }
 
-        rows.Sort(static (a, b) => b.Size.CompareTo(a.Size));
-        return rows;
+        long denom = TotalSize > 0 ? TotalSize : 1;
+        var rows = new List<EntryRow>(heap.Count);
+        while (heap.TryDequeue(out var hit, out _))
+        {
+            rows.Add(hit.IsDir
+                ? MakeSearchDirRow(hit.Id, denom)
+                : MakeFileRow(hit.Id, _pool.GetString(_fileName[hit.Id]),
+                    Extensions.NameOf(_fileExt[hit.Id]), _fileSize[hit.Id], denom));
+        }
+
+        rows.Sort(static (a, b) =>
+        {
+            int c = b.Size.CompareTo(a.Size);
+            return c != 0 ? c : string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+        });
+        return new SearchOutcome { Rows = rows, TotalMatches = total };
     }
+
+    private static void OfferMatch(PriorityQueue<(bool IsDir, int Id), long> heap, int max, (bool IsDir, int Id) item, long size)
+    {
+        if (heap.Count < max)
+        {
+            heap.Enqueue(item, size);
+        }
+        else if (heap.TryPeek(out _, out long smallest) && size > smallest)
+        {
+            heap.EnqueueDequeue(item, size);   // 가장 작은 항목을 밀어낸다
+        }
+    }
+
+    private EntryRow MakeSearchDirRow(int i, long denom) => new()
+    {
+        Kind = RowKind.Directory,
+        Id = i,
+        Name = _pool.GetString(_dirName[i]),
+        FullPath = GetDirectoryPath(i),
+        Size = _dirTotalSize[i],
+        Ratio = (double)_dirTotalSize[i] / denom,
+        FileCount = _dirTotalFiles[i],
+        DirectoryCount = _dirTotalDirs[i],
+        Modified = ToDateTime(_dirTime[i]),
+        Category = (CategoryFlags)_dirCat[i],
+    };
 
     public IReadOnlyList<ExtensionRow> GetExtensionRows() => Extensions.BuildRows(TotalSize);
 

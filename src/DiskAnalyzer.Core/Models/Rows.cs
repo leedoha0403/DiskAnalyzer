@@ -38,6 +38,14 @@ public sealed class EntryRow
     public string TypeText => Kind == RowKind.Directory ? "폴더" : (Extension.Length > 0 ? Extension : "파일");
 }
 
+/// <summary>검색 결과 + 조건에 맞은 전체 건수(표시 상한을 넘겼는지 알리기 위함).</summary>
+public sealed class SearchOutcome
+{
+    public required List<EntryRow> Rows { get; init; }
+    public int TotalMatches { get; init; }
+    public bool Truncated => TotalMatches > Rows.Count;
+}
+
 public sealed class ExtensionRow
 {
     public required string Extension { get; init; }

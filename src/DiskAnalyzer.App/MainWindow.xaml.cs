@@ -20,8 +20,6 @@ namespace DiskAnalyzer.App;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm = new();
-    private string? _sortKey;
-    private bool _sortDescending = true;
 
     public MainWindow()
     {
@@ -44,6 +42,9 @@ public partial class MainWindow : Window
         };
 
         _vm.ViewRefreshed += (_, _) => UpdateTreemap();
+
+        // [검색] 버튼과 Enter 가 같은 경로를 타도록 탭 전환은 여기서 한다. 결과는 폴더 목록에 나온다.
+        _vm.SearchStarted += (_, _) => { if (Tabs.SelectedIndex != 0) Tabs.SelectedIndex = 0; };
 
         Treemap.HoverChanged += OnTreemapHover;
         Treemap.ItemActivated += OnTreemapActivated;
@@ -233,62 +234,25 @@ public partial class MainWindow : Window
 
     private void OnSearchKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Enter) return;
-        if (Tabs.SelectedIndex != 0) Tabs.SelectedIndex = 0;
-        _vm.SearchCommand.Execute(null);
+        if (e.Key == Key.Enter) _vm.SearchCommand.Execute(null);
     }
 
     // ---------------------------------------------------------------- 정렬
 
     /// <summary>
-    /// 컬럼 헤더 클릭 정렬.
-    /// CollectionView 의 SortDescriptions 을 쓰면 리플렉션 비교자가 붙어 10만 행에서 눈에 띄게 느려진다.
-    /// 여기서는 타입을 아는 비교자로 List 를 직접 정렬한 뒤 ItemsSource 를 교체한다.
+    /// 컬럼 헤더 클릭 정렬. 정렬은 ViewModel 이 맡는다(RowSorter 주석 참고).
+    /// 여기서 ListView.ItemsSource 를 직접 바꾸면 XAML 바인딩이 끊겨서 이후 검색/폴더 이동이 화면에 반영되지 않는다.
     /// </summary>
     private void OnHeaderClick(object sender, RoutedEventArgs e)
     {
         if (e.OriginalSource is not GridViewColumnHeader { Tag: string key }) return;
-        if (sender is not ListView list || list.ItemsSource is not IEnumerable source) return;
 
-        if (_sortKey == key) _sortDescending = !_sortDescending;
-        else { _sortKey = key; _sortDescending = true; }
-
-        var items = source.Cast<object>().ToList();
-        items.Sort(BuildComparison(key, _sortDescending));
-        list.ItemsSource = items;
-    }
-
-    private static Comparison<object> BuildComparison(string key, bool descending)
-    {
-        int sign = descending ? -1 : 1;
-        return (a, b) =>
-        {
-            int result = (a, b) switch
-            {
-                (EntryRow x, EntryRow y) => key switch
-                {
-                    "Name" => string.Compare(x.Name, y.Name, StringComparison.OrdinalIgnoreCase),
-                    "Size" => x.Size.CompareTo(y.Size),
-                    "FileCount" => x.FileCount.CompareTo(y.FileCount),
-                    "DirectoryCount" => x.DirectoryCount.CompareTo(y.DirectoryCount),
-                    "Modified" => x.Modified.CompareTo(y.Modified),
-                    "Extension" => string.Compare(x.Extension, y.Extension, StringComparison.OrdinalIgnoreCase),
-                    "Category" => string.Compare(x.CategoryText, y.CategoryText, StringComparison.OrdinalIgnoreCase),
-                    "FullPath" => string.Compare(x.FullPath, y.FullPath, StringComparison.OrdinalIgnoreCase),
-                    _ => 0,
-                },
-                (ExtensionRow x, ExtensionRow y) => key switch
-                {
-                    "Extension" => string.Compare(x.Extension, y.Extension, StringComparison.OrdinalIgnoreCase),
-                    "Size" => x.Size.CompareTo(y.Size),
-                    "Count" => x.Count.CompareTo(y.Count),
-                    "Category" => string.Compare(x.CategoryText, y.CategoryText, StringComparison.OrdinalIgnoreCase),
-                    _ => 0,
-                },
-                _ => 0,
-            };
-            return result * sign;
-        };
+        SortTarget? target = ReferenceEquals(sender, FolderList) ? SortTarget.Folder
+            : ReferenceEquals(sender, LargeFileList) ? SortTarget.LargeFiles
+            : ReferenceEquals(sender, ExtensionList) ? SortTarget.Extensions
+            : ReferenceEquals(sender, ExtensionFileList) ? SortTarget.ExtensionFiles
+            : null;
+        if (target is { } t) _vm.ToggleSort(t, key);
     }
 
     // ---------------------------------------------------------------- 15. 우클릭 메뉴

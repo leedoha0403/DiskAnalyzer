@@ -237,10 +237,14 @@
                                     </TextBlock>
                                 </Grid>
                                 <Button Content="적용" Command="{Binding ApplyFilterCommand}" Margin="0,0,16,0" />
+                                <ComboBox ItemsSource="{Binding SearchScopeOptions}" SelectedItem="{Binding SelectedSearchScope}"
+                                          Width="120" Margin="0,0,6,0"
+                                          ToolTip="검색 범위 - '현재 폴더 하위'는 지금 보고 있는 폴더 안에서만 찾습니다" />
                                 <Grid Width="210" Margin="0,0,6,0">
                                     <TextBox x:Name="SearchBox"
                                              Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                             KeyDown="OnSearchKeyDown" ToolTip="파일명 / 폴더명 검색" />
+                                             KeyDown="OnSearchKeyDown"
+                                             ToolTip="파일명 / 폴더명 검색 (Enter)&#10;글자만 입력하면 부분 일치, * 와 ? 를 쓰면 이름 전체 패턴 (예: *.log, log_??.txt)" />
                                     <TextBlock Text="파일명 / 폴더명 검색" IsHitTestVisible="False" Margin="10,0,0,0"
                                                VerticalAlignment="Center" Foreground="{DynamicResource TextDimBrush}"
                                                FontSize="12.5">

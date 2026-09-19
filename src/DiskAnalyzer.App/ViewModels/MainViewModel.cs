@@ -76,17 +76,50 @@ public sealed class MainViewModel : ObservableObject
         set { if (Set(ref _selectedDrive, value)) ShowResultFor(value?.RootPath); }
     }
 
+    // 목록은 만들어질 때마다 "사용자가 고른 정렬"을 적용해서 내보낸다(RowSorter 주석 참고).
+    private readonly Dictionary<SortTarget, SortSpec> _sorts = new();
+    private SortSpec? SortOf(SortTarget target) => _sorts.TryGetValue(target, out var s) ? s : null;
+
     private IReadOnlyList<EntryRow> _rows = Array.Empty<EntryRow>();
-    public IReadOnlyList<EntryRow> Rows { get => _rows; private set => Set(ref _rows, value); }
+    public IReadOnlyList<EntryRow> Rows
+    {
+        get => _rows;
+        private set => Set(ref _rows, RowSorter.Sort(value, SortOf(SortTarget.Folder)));
+    }
 
     private IReadOnlyList<EntryRow> _topFiles = Array.Empty<EntryRow>();
-    public IReadOnlyList<EntryRow> TopFiles { get => _topFiles; private set => Set(ref _topFiles, value); }
+    public IReadOnlyList<EntryRow> TopFiles
+    {
+        get => _topFiles;
+        private set => Set(ref _topFiles, RowSorter.Sort(value, SortOf(SortTarget.LargeFiles)));
+    }
 
     private IReadOnlyList<ExtensionRow> _extensions = Array.Empty<ExtensionRow>();
-    public IReadOnlyList<ExtensionRow> Extensions { get => _extensions; private set => Set(ref _extensions, value); }
+    public IReadOnlyList<ExtensionRow> Extensions
+    {
+        get => _extensions;
+        private set => Set(ref _extensions, RowSorter.Sort(value, SortOf(SortTarget.Extensions)));
+    }
 
     private IReadOnlyList<EntryRow> _extensionFiles = Array.Empty<EntryRow>();
-    public IReadOnlyList<EntryRow> ExtensionFiles { get => _extensionFiles; private set => Set(ref _extensionFiles, value); }
+    public IReadOnlyList<EntryRow> ExtensionFiles
+    {
+        get => _extensionFiles;
+        private set => Set(ref _extensionFiles, RowSorter.Sort(value, SortOf(SortTarget.ExtensionFiles)));
+    }
+
+    /// <summary>컬럼 헤더 클릭. 같은 키면 방향을 뒤집고, 새 정렬을 현재 목록에 바로 적용한다.</summary>
+    public void ToggleSort(SortTarget target, string key)
+    {
+        _sorts[target] = RowSorter.Toggle(SortOf(target), key);
+        switch (target)
+        {
+            case SortTarget.Folder: Rows = _rows; break;
+            case SortTarget.LargeFiles: TopFiles = _topFiles; break;
+            case SortTarget.Extensions: Extensions = _extensions; break;
+            case SortTarget.ExtensionFiles: ExtensionFiles = _extensionFiles; break;
+        }
+    }
 
     public ObservableCollection<BreadcrumbItem> Breadcrumb { get; } = new();
 
@@ -121,6 +154,24 @@ public sealed class MainViewModel : ObservableObject
 
     private bool _isSearchMode;
     public bool IsSearchMode { get => _isSearchMode; private set => Set(ref _isSearchMode, value); }
+
+    /// <summary>검색을 실행한 시점의 검색어. 필터/삭제로 결과를 다시 만들 때는 입력창이 아니라 이 값을 쓴다.</summary>
+    private string _activeSearchTerm = string.Empty;
+
+    public IReadOnlyList<string> SearchScopeOptions { get; } = new[] { "전체", "현재 폴더 하위" };
+
+    private string _selectedSearchScope = "전체";
+    public string SelectedSearchScope
+    {
+        get => _selectedSearchScope;
+        set
+        {
+            if (Set(ref _selectedSearchScope, value) && IsSearchMode) ExecuteSearch();
+        }
+    }
+
+    /// <summary>검색이 실제로 시작될 때. 화면은 폴더 목록이 보이도록 탭을 맞춘다.</summary>
+    public event EventHandler? SearchStarted;
 
     private ExtensionRow? _selectedExtension;
     public ExtensionRow? SelectedExtension
@@ -620,6 +671,14 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
+        // 검색 결과를 보는 중에 필터를 바꾸거나 항목을 삭제하면 "폴더 목록"이 아니라 검색을 다시 한다.
+        // 그렇지 않으면 검색 모드 표시는 그대로인데 목록만 폴더 내용으로 바뀌어 화면이 어긋난다.
+        if (IsSearchMode)
+        {
+            ExecuteSearch();
+            return;
+        }
+
         var filter = BuildFilter();
         Rows = store.GetChildren(_currentDirId, includeFiles: true, filter.IsEmpty ? null : filter);
         CurrentPath = store.GetDirectoryPath(_currentDirId);
@@ -665,21 +724,55 @@ public sealed class MainViewModel : ObservableObject
 
     // ---------------------------------------------------------------- 검색
 
+    private const int MaxSearchResults = 5000;
+
     private void RunSearch()
     {
-        var store = _current?.Store;
-        if (store == null || string.IsNullOrWhiteSpace(SearchText))
+        string term = SearchText.Trim();
+        if (term.Length == 0)
         {
             ClearSearch();
             return;
         }
 
+        // 스캔 중에는 NodeStore 를 Aggregator 가 쓰고 있어 UI 스레드가 읽을 수 없다.
+        // 아무 반응이 없으면 "검색이 안 된다"로 보이므로 이유를 알려 준다.
+        if (_current?.Store == null)
+        {
+            StatusMessage = IsScanning
+                ? "스캔이 끝난 뒤에 검색할 수 있습니다."
+                : "검색할 스캔 결과가 없습니다. 먼저 드라이브를 스캔하세요.";
+            return;
+        }
+
+        _activeSearchTerm = term;
+        SearchStarted?.Invoke(this, EventArgs.Empty);
+        ExecuteSearch();
+    }
+
+    private void ExecuteSearch()
+    {
+        var store = _current?.Store;
+        if (store == null || _activeSearchTerm.Length == 0) return;
+
         var filter = BuildFilter();
+        bool scoped = SelectedSearchScope != "전체" && _currentDirId > NodeStore.RootId;
+
         var sw = Stopwatch.StartNew();
-        Rows = store.Search(SearchText.Trim(), 5000, filter.IsEmpty ? null : filter);
+        var outcome = store.SearchWithCount(
+            _activeSearchTerm, MaxSearchResults, filter.IsEmpty ? null : filter,
+            scoped ? _currentDirId : NodeStore.RootId);
+        double ms = sw.Elapsed.TotalMilliseconds;
+
         IsSearchMode = true;
-        CurrentPath = $"검색: \"{SearchText.Trim()}\"";
-        StatusMessage = $"검색 결과 {Rows.Count:N0}건 ({sw.Elapsed.TotalMilliseconds:F0}ms)";
+        Rows = outcome.Rows;
+        CurrentPath = scoped
+            ? $"검색: \"{_activeSearchTerm}\"  ·  {store.GetDirectoryPath(_currentDirId)} 하위"
+            : $"검색: \"{_activeSearchTerm}\"";
+
+        StatusMessage = outcome.Truncated
+            ? $"검색 결과 {outcome.TotalMatches:N0}건 중 크기 상위 {outcome.Rows.Count:N0}건 표시 ({ms:F0}ms) — 검색어를 좁혀 보세요"
+            : $"검색 결과 {outcome.TotalMatches:N0}건 ({ms:F0}ms)";
         ViewRefreshed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -690,7 +783,11 @@ public sealed class MainViewModel : ObservableObject
         RefreshCurrentView();
     }
 
-    private void ClearSearchState() => IsSearchMode = false;
+    private void ClearSearchState()
+    {
+        IsSearchMode = false;
+        _activeSearchTerm = string.Empty;
+    }
 
     // ---------------------------------------------------------------- 알림
 
