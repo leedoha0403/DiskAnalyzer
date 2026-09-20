@@ -141,6 +141,44 @@ public class MutationTests
     }
 
     [Fact]
+    public void FindNodes_Resolves_Files_And_Folders_By_Path_Ignoring_Case()
+    {
+        var store = Build();
+
+        var found = store.FindNodes(new[] { @"C:\A\B\b1.pdb", @"c:\c", @"C:\A\a1.txt" });
+
+        Assert.Contains((RowKind.File, 2), found);        // b1.pdb
+        Assert.Contains((RowKind.Directory, 3), found);   // C
+        Assert.Contains((RowKind.File, 0), found);        // a1.txt
+        Assert.Equal(3, found.Count);
+    }
+
+    [Fact]
+    public void FindNodes_Skips_Unknown_OutOfScope_Root_And_Already_Removed()
+    {
+        var store = Build();
+        store.RemoveNodes(new[] { (RowKind.File, 3) });   // c1.dat
+
+        var found = store.FindNodes(new[]
+        {
+            @"C:\A\nope.txt", @"C:\Nope\x.txt", @"D:\A\a1.txt", @"C:\", @"C:\C\c1.dat", @"C:\AB\a1.txt", "",
+        });
+
+        Assert.Empty(found);
+    }
+
+    [Fact]
+    public void Moved_Sources_Are_Removed_From_The_Store_Through_FindNodes()
+    {
+        var store = Build();
+
+        store.RemoveNodes(store.FindNodes(new[] { @"C:\A\B", @"C:\A\a2.log" }));
+
+        Assert.Equal(100 * Mb + 50 * Mb, store.TotalSize);   // a1 + c1 만 남는다
+        Assert.Equal(2, store.FileCount);
+    }
+
+    [Fact]
     public void Deleting_Everything_Leaves_Zero()
     {
         var store = Build();

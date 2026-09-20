@@ -4,12 +4,22 @@ using DiskAnalyzer.Core.QuickMove;
 namespace DiskAnalyzer.App.ViewModels.QuickMove;
 
 /// <summary>"빠른 위치" 버튼 하나. 즐겨찾기 / 기본 폴더(바탕화면·다운로드·문서) / 드라이브.</summary>
-public sealed class QuickLocation
+public sealed class QuickLocation : ObservableObject
 {
+    private bool _isMissing;
+
     public required string Name { get; init; }
     public required string Path { get; init; }
     public bool IsFavorite { get; init; }
-    public string ToolTip => Path;
+
+    /// <summary>폴더가 지워졌거나 옮겨져 더는 없다. 즐겨찾기에서 뺄 수 있게 흐리게 보여 준다.</summary>
+    public bool IsMissing
+    {
+        get => _isMissing;
+        set { if (Set(ref _isMissing, value)) Raise(nameof(ToolTip)); }
+    }
+
+    public string ToolTip => _isMissing ? $"{Path}\n(폴더를 찾을 수 없습니다 — ✕ 로 즐겨찾기에서 뺄 수 있습니다)" : Path;
 }
 
 /// <summary>Breadcrumb 조각. 클릭하면 그 폴더로 이동한다.</summary>

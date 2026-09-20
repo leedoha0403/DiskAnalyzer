@@ -27,7 +27,34 @@
                     <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                     <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                 </DataTrigger>
+                <!-- 폴더가 없어진 즐겨찾기: 흐리게. ✕ 로 뺄 수 있다. -->
+                <DataTrigger Binding="{Binding IsMissing}" Value="True">
+                    <Setter Property="Opacity" Value="0.55" />
+                </DataTrigger>
             </Style.Triggers>
+        </Style>
+
+        <!-- 즐겨찾기 칩 안의 작은 ✕ (즐겨찾기에서 빼기) -->
+        <Style x:Key="ChipRemove" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="8" Padding="4,0" Margin="6,0,-4,0">
+                            <TextBlock Text="✕" FontSize="10" VerticalAlignment="Center"
+                                       Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BarFillStrongBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="PaneListItem" TargetType="ListViewItem" BasedOn="{StaticResource DataListItem}">
@@ -285,11 +312,19 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type qm:QuickLocation}">
-                                <Button Content="{Binding Name}" Tag="{Binding Path}" ToolTip="{Binding ToolTip}"
+                                <Button Tag="{Binding Path}" ToolTip="{Binding ToolTip}"
                                         Style="{StaticResource ChipButton}" Click="OnChipClick"
                                         MouseRightButtonUp="OnChipRightClick"
                                         DragEnter="OnChipDragOver" DragOver="OnChipDragOver"
-                                        DragLeave="OnChipDragLeave" Drop="OnChipDrop" />
+                                        DragLeave="OnChipDragLeave" Drop="OnChipDrop">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                        <!-- 즐겨찾기에만: 오른쪽 클릭 메뉴를 몰라도 바로 뺄 수 있다 -->
+                                        <Button Style="{StaticResource ChipRemove}" Click="OnChipRemoveClick"
+                                                ToolTip="즐겨찾기에서 빼기" AutomationProperties.Name="즐겨찾기에서 빼기"
+                                                Visibility="{Binding IsFavorite, Converter={StaticResource BoolToVis}}" />
+                                    </StackPanel>
+                                </Button>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

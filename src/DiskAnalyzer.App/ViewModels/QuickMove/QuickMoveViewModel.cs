@@ -476,7 +476,41 @@ public sealed class QuickMoveViewModel : ObservableObject
 
         QuickLocations.Clear();
         foreach (var l in list) QuickLocations.Add(l);
+        _ = CheckLocationsAsync();
     }
+
+    /// <summary>즐겨찾기 폴더가 아직 있는지 백그라운드에서 확인해 없는 것은 흐리게 표시한다(네트워크 경로여도 화면이 멈추지 않게).</summary>
+    private async Task CheckLocationsAsync()
+    {
+        var favorites = QuickLocations.Where(l => l.IsFavorite).ToList();
+        if (favorites.Count == 0) return;
+
+        var paths = favorites.Select(l => l.Path).ToList();
+        var missing = await Task.Run(() => paths.Where(p => !Directory.Exists(p)).ToHashSet(StringComparer.OrdinalIgnoreCase));
+        foreach (var l in favorites) l.IsMissing = missing.Contains(l.Path);
+    }
+
+    /// <summary>화면 스레드에서 실행한다(파일 감시 같은 백그라운드 스레드에서 부를 때).</summary>
+    internal void PostToUi(Action action)
+    {
+        if (_ui != null) _ui.Post(_ => action(), null);
+        else Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.None, UiScheduler);
+    }
+
+    /// <summary>
+    /// 두 패널을 실제 상태로 다시 읽는다. 다른 탭에서 지웠거나 탐색기에서 바꾼 결과를 바로 보이게 할 때 쓴다.
+    /// </summary>
+    public void RefreshPanes(bool clearMeasureCache = true)
+    {
+        if (Phase == QuickMovePhase.Running) return;   // 실행이 끝나면 어차피 다시 읽는다
+        if (clearMeasureCache) ClearMeasureCache();    // 지운 뒤에는 폴더 크기가 달라졌다. 창을 다시 눌렀을 뿐이면 캐시를 유지한다
+        Left.Refresh(clearCache: false);
+        Right.Refresh(clearCache: false);
+        _ = CheckLocationsAsync();
+    }
+
+    /// <summary>이동으로 원래 자리에서 사라진 경로들(이동을 마친 뒤). 스캔 결과(폴더/트리맵/큰 파일 탭)에서 빼는 데 쓴다.</summary>
+    public event Action<IReadOnlyList<string>>? SourcesRelocated;
 
     public void ToggleFavorite(string path)
     {
@@ -498,6 +532,15 @@ public sealed class QuickMoveViewModel : ObservableObject
         SaveSettings();
         RaiseCommands();
         RecomputeSpace();
+        _ = CheckLocationsAsync();   // 새로 읽을 때마다(감시 / 새로고침 포함) 사라진 즐겨찾기를 다시 확인한다
+    }
+
+    /// <summary>패널이 같은 폴더를 다시 읽었다(위치는 그대로). 최근 위치 / 마지막 위치는 건드리지 않는다.</summary>
+    public void OnPaneRefreshed()
+    {
+        RaiseCommands();
+        RecomputeSpace();
+        _ = CheckLocationsAsync();
     }
 
     public void OnSelectionChanged() => RaiseCommands();
@@ -876,6 +919,8 @@ public sealed class QuickMoveViewModel : ObservableObject
         Interlocked.Exchange(ref _waitedMs, 0);
         _runClock = Stopwatch.StartNew();
         Notice = string.Empty;
+        Left.SuspendWatching();
+        Right.SuspendWatching();
         Phase = QuickMovePhase.Running;
 
         MoveSummary summary;
@@ -1074,9 +1119,16 @@ public sealed class QuickMoveViewModel : ObservableObject
         ClearMeasureCache();
         Left.Refresh();
         Right.Refresh();
+        Left.ResumeWatching();
+        Right.ResumeWatching();
         _ = Left.RefreshVolumeInfoAsync();
         _ = Right.RefreshVolumeInfoAsync();
         RecomputeSpace();
+        _ = CheckLocationsAsync();
+
+        // 옮겨진 항목은 스캔 결과에도 남아 있으면 안 된다(폴더/트리맵/큰 파일/정리 추천 탭이 그대로 보여 준다).
+        var relocated = summary.Results.Where(r => r.Status == MoveStatus.Moved).Select(r => r.Request.SourcePath).ToList();
+        if (relocated.Count > 0) SourcesRelocated?.Invoke(relocated);
     }
 
     private TimeSpan ActiveElapsed(MoveSummary summary)

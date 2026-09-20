@@ -475,6 +475,70 @@ public sealed class NodeStore
         return cur;
     }
 
+    /// <summary>
+    /// 경로로 노드(파일/폴더)를 찾는다 — 스캔 밖에서 옮겨지거나 지워진 항목을 저장소에서 빼기 위해 쓴다.
+    /// 여러 경로를 한 번에 받아서, 같은 폴더 아래 항목이 수천 개여도 폴더 배열과 파일 배열을 각각 한 번만 훑는다.
+    /// 스캔 범위 밖이거나 이미 없는 경로는 결과에서 빠진다. 스캔 루트 자체는 찾지 않는다.
+    /// </summary>
+    public List<(RowKind Kind, int Id)> FindNodes(IEnumerable<string> fullPaths)
+    {
+        var found = new List<(RowKind, int)>();
+        string root = NormalizeRoot(_pool.GetString(_dirName[RootId])).TrimEnd('\\');
+
+        var childMap = new Dictionary<int, Dictionary<string, int>>();
+        Dictionary<string, int> ChildDirs(int parent)
+        {
+            if (childMap.TryGetValue(parent, out var map)) return map;
+            map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = parent + 1; i < _dirCount; i++)
+                if (_dirParent[i] == parent && !_dirDeleted[i]) map.TryAdd(_pool.GetString(_dirName[i]), i);
+            return childMap[parent] = map;
+        }
+
+        var wantedFiles = new Dictionary<int, HashSet<string>>();
+
+        foreach (var raw in fullPaths)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            string path = raw.TrimEnd('\\');
+            if (path.Length <= root.Length || !path.StartsWith(root, StringComparison.OrdinalIgnoreCase) || path[root.Length] != '\\')
+                continue;
+
+            var parts = path[(root.Length + 1)..].Split('\\', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) continue;
+
+            int cur = RootId;
+            bool ok = true;
+            for (int k = 0; k < parts.Length - 1 && ok; k++)
+                ok = ChildDirs(cur).TryGetValue(parts[k], out cur);
+            if (!ok) continue;
+
+            string leaf = parts[^1];
+            if (ChildDirs(cur).TryGetValue(leaf, out int dirId))
+            {
+                found.Add((RowKind.Directory, dirId));
+            }
+            else
+            {
+                if (!wantedFiles.TryGetValue(cur, out var names))
+                    wantedFiles[cur] = names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                names.Add(leaf);
+            }
+        }
+
+        if (wantedFiles.Count > 0)
+        {
+            for (int f = 0; f < _fileCount; f++)
+            {
+                int parent = _fileParent[f];
+                if (parent < 0 || !wantedFiles.TryGetValue(parent, out var names)) continue;
+                if (names.Contains(_pool.GetString(_fileName[f]))) found.Add((RowKind.File, f));
+            }
+        }
+
+        return found;
+    }
+
     // ------------------------------------------------------------------ 조회
 
     /// <summary>

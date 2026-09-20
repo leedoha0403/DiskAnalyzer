@@ -39,6 +39,7 @@ public sealed class MainViewModel : ObservableObject
         SelectedDrive = Drives.FirstOrDefault();
         IsElevated = DriveService.IsElevated();
         QuickMove = new QuickMoveViewModel(() => CurrentPath);
+        QuickMove.SourcesRelocated += OnQuickMoveRelocated;
 
         ScanSelectedCommand = new RelayCommand(() => StartScan(SelectedDrive?.RootPath), () => !IsScanning);
         ScanAllCommand = new RelayCommand(StartScanAll, () => !IsScanning);
@@ -308,6 +309,15 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>14. 삭제 성공 항목을 데이터 모델에서 즉시 제거한다(전체 재스캔 없이).</summary>
     public void ApplyDeletion(IReadOnlyList<(RowKind Kind, int Id)> removed)
     {
+        // 지운 폴더를 빠른 이동 패널이 열어 두고 있을 수 있다. 스캔 결과가 없어도(다른 드라이브 등) 패널은 갱신한다.
+        QuickMove.RefreshPanes();
+
+        RemoveFromStore(removed, moved: false);
+    }
+
+    /// <summary>스캔 결과에서 노드를 빼고 모든 탭을 다시 그린다. 화면(패널) 갱신은 호출자 몫이다.</summary>
+    private void RemoveFromStore(IReadOnlyList<(RowKind Kind, int Id)> removed, bool moved)
+    {
         var store = _current?.Store;
         if (store == null || removed.Count == 0) return;
 
@@ -319,8 +329,25 @@ public sealed class MainViewModel : ObservableObject
         Cleanup.RemoveDeletedNodes(removed);
         ViewRefreshed?.Invoke(this, EventArgs.Empty);
 
-        StatusMessage = $"{mutation.RemovedFiles:N0}개 파일 / {mutation.RemovedDirectories:N0}개 폴더 제거 — " +
-                        $"{SizeFormatter.Format(mutation.RemovedBytes)} 확보 (화면 즉시 반영, 정확한 동기화는 새로고침)";
+        StatusMessage = moved
+            ? $"이동한 {mutation.RemovedFiles:N0}개 파일 / {mutation.RemovedDirectories:N0}개 폴더를 분석 결과의 원래 위치에서 뺐습니다 — " +
+              "옮겨 간 위치의 새 항목은 재스캔해야 나타납니다"
+            : $"{mutation.RemovedFiles:N0}개 파일 / {mutation.RemovedDirectories:N0}개 폴더 제거 — " +
+              $"{SizeFormatter.Format(mutation.RemovedBytes)} 확보 (화면 즉시 반영, 정확한 동기화는 새로고침)";
+    }
+
+    /// <summary>
+    /// 빠른 이동으로 원래 자리에서 사라진 항목을 분석 결과(폴더/트리맵/큰 파일/정리 추천 탭)에서 뺀다.
+    /// 그러지 않으면 이미 옮긴 파일이 그 탭들에 계속 남아 있고, 그것을 다시 지우려다 "이미 삭제됨" 이 된다.
+    /// 스캔 중에는 저장소를 쓰는 스레드가 따로 있으므로 건드리지 않는다.
+    /// </summary>
+    private void OnQuickMoveRelocated(IReadOnlyList<string> sourcePaths)
+    {
+        var store = _current?.Store;
+        if (store == null || IsScanning) return;
+
+        var nodes = store.FindNodes(sourcePaths);
+        if (nodes.Count > 0) RemoveFromStore(nodes, moved: true);
     }
 
     /// <summary>53~66. 정리 추천 탭.</summary>

@@ -301,7 +301,7 @@ public sealed class QuickMoveTests : IDisposable
             if (p.ItemIndex == 3 && Interlocked.Exchange(ref seen, 1) == 0) cts.Cancel();
         });
 
-        var s = new MoveEngine(new MoveOptions { Progress = progress }).Run(reqs, cts.Token);
+        var s = new MoveEngine(new MoveOptions { Progress = progress, Parallelism = 1 }).Run(reqs, cts.Token);   // 순서를 고정해야 "3번째에서 취소"가 성립한다
 
         Assert.True(s.WasCancelled);
         Assert.Equal(2, s.Moved);                      // 3번째 항목 시작 시점에 취소 → 앞의 2개만 완료
@@ -324,6 +324,109 @@ public sealed class QuickMoveTests : IDisposable
         engine.Resume();
         Assert.True(task.Wait(5000));
         Assert.Equal(1, task.Result.Moved);
+    }
+
+    // ------------------------------------------------------------------ 병렬
+
+    private string MakeTree(string name, int dirs, int filesPerDir)
+    {
+        string top = Path.Combine(_src, name);
+        for (int d = 0; d < dirs; d++)
+        {
+            string dir = Path.Combine(top, $"d{d}", "n");
+            Directory.CreateDirectory(dir);
+            for (int f = 0; f < filesPerDir; f++)
+            {
+                File.WriteAllText(Path.Combine(dir, $"f{f}.txt"), $"{d}-{f}");
+                File.WriteAllText(Path.Combine(top, $"d{d}", $"t{f}.txt"), $"{d}-{f}");
+            }
+        }
+        return top;
+    }
+
+    [Theory]
+    [InlineData(false, 1)]
+    [InlineData(false, 8)]
+    [InlineData(true, 1)]
+    [InlineData(true, 8)]
+    public void Big_tree_merge_moves_every_file_regardless_of_parallelism(bool forceCopy, int parallelism)
+    {
+        string top = MakeTree("Data", dirs: 12, filesPerDir: 40);       // 960 파일
+        Directory.CreateDirectory(Path.Combine(_dst, "Data"));          // 대상에 같은 폴더 → 병합 경로(안쪽을 하나씩)
+
+        var s = Run(new MoveOptions { ForceCopy = forceCopy, Parallelism = parallelism, Policy = ConflictPolicy.Overwrite }, Req(top, _dst));
+
+        Assert.Equal(1, s.Moved);
+        Assert.True(s.AllSucceeded, string.Join("; ", s.Results.Select(r => r.Error)));
+        Assert.False(Directory.Exists(top));
+        Assert.Equal(960, Directory.EnumerateFiles(Path.Combine(_dst, "Data"), "*", SearchOption.AllDirectories).Count());
+        Assert.Equal("5-7", File.ReadAllText(Path.Combine(_dst, "Data", "d5", "n", "f7.txt")));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(8)]
+    public void Many_top_level_items_all_move_and_results_keep_request_order(int parallelism)
+    {
+        var reqs = Enumerable.Range(0, 300).Select(i => Req(File1(_src, $"m{i:D3}.txt", i.ToString()), _dst)).ToArray();
+
+        var s = Run(new MoveOptions { Parallelism = parallelism, ForceCopy = parallelism == 8 }, reqs);
+
+        Assert.Equal(300, s.Moved);
+        for (int i = 0; i < 300; i++)
+        {
+            Assert.Equal(reqs[i].SourcePath, s.Results[i].Request.SourcePath);   // 병렬이어도 결과 순서는 요청 순서
+            Assert.Equal(i.ToString(), File.ReadAllText(Path.Combine(_dst, $"m{i:D3}.txt")));
+        }
+    }
+
+    [Fact]
+    public void Parallel_conflicts_ask_only_once_when_apply_to_all_is_chosen()
+    {
+        var reqs = new List<MoveRequest>();
+        for (int i = 0; i < 40; i++)
+        {
+            reqs.Add(Req(File1(_src, $"c{i}.txt", "new"), _dst));
+            File1(_dst, $"c{i}.txt", "old");
+        }
+
+        int asked = 0;
+        var options = new MoveOptions
+        {
+            Parallelism = 8,
+            ResolveConflict = _ =>
+            {
+                Interlocked.Increment(ref asked);
+                Thread.Sleep(20);                                       // 대화 상자가 열려 있는 동안 다른 스레드도 충돌을 만난다
+                return new ConflictDecision(ConflictChoice.Overwrite, ApplyToAll: true);
+            },
+        };
+
+        var s = Run(options, reqs.ToArray());
+
+        Assert.Equal(1, asked);                                         // 동시에 여러 번 묻지 않는다
+        Assert.Equal(40, s.Moved);
+        Assert.Equal("new", File.ReadAllText(Path.Combine(_dst, "c17.txt")));
+    }
+
+    [Fact]
+    public void Cancelling_a_parallel_move_never_loses_data()
+    {
+        string top = MakeTree("Data", dirs: 20, filesPerDir: 50);    // 2,000 파일
+        long total = Directory.EnumerateFiles(top, "*", SearchOption.AllDirectories).Count();
+
+        using var cts = new CancellationTokenSource();
+        var progress = new SyncProgress(p => { if (p.FilesDone > 300) cts.Cancel(); });
+        Directory.CreateDirectory(Path.Combine(_dst, "Data"));
+
+        var s = new MoveEngine(new MoveOptions { Parallelism = 8, ForceCopy = true, Progress = progress, Policy = ConflictPolicy.Overwrite })
+            .Run(new[] { Req(top, _dst) }, cts.Token);
+
+        // 취소되든 끝까지 갔든, 파일은 원본과 대상 중 한 곳에 반드시 하나씩 있다(복사 후에만 원본 삭제).
+        long inSrc = Directory.Exists(top) ? Directory.EnumerateFiles(top, "*", SearchOption.AllDirectories).Count() : 0;
+        long inDst = Directory.EnumerateFiles(Path.Combine(_dst, "Data"), "*", SearchOption.AllDirectories).Count();
+        Assert.True(inSrc + inDst >= total, $"src {inSrc} + dst {inDst} < total {total}");
+        Assert.True(s.WasCancelled || s.AllSucceeded);
     }
 
     // ------------------------------------------------------------------ 진행률

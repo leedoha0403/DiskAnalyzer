@@ -193,7 +193,7 @@ public sealed class QuickMovePaneViewModel : ObservableObject
     /// 폴더를 연다. 존재하지 않는 경로는 현재 위치를 유지하고 안내만 띄운다.
     /// 권한이 없는 폴더는 이동은 하되 "접근 권한이 없습니다" 화면을 보여 준다(다른 위치를 고를 수 있게).
     /// </summary>
-    public async Task<bool> NavigateAsync(string path, bool record = true, IReadOnlyCollection<string>? select = null)
+    public async Task<bool> NavigateAsync(string path, bool record = true, IReadOnlyCollection<string>? select = null, bool refresh = false)
     {
         if (!PathUtil.TryNormalize(path, out string target))
         {
@@ -204,8 +204,12 @@ public sealed class QuickMovePaneViewModel : ObservableObject
         var cts = new CancellationTokenSource();
         Interlocked.Exchange(ref _loadCts, cts)?.Cancel();
 
-        IsLoading = true;
-        Notice = string.Empty;
+        if (!refresh)
+        {
+            // 조용한 새로고침에서는 "불러오는 중" 표시가 깜박이지 않게 하고, 이미 떠 있는 안내(예: 상위 폴더로 이동함)도 지우지 않는다.
+            IsLoading = true;
+            Notice = string.Empty;
+        }
         bool showHidden = _owner.Settings.ShowHidden;
 
         BrowseResult result;
@@ -234,22 +238,72 @@ public sealed class QuickMovePaneViewModel : ObservableObject
             _forward.Clear();
         }
 
-        Commit(target, result);
+        Commit(target, result, refresh);
         if (select is { Count: > 0 }) SelectRequested?.Invoke(this, select);
         return true;
     }
 
-    /// <summary>새로고침. 현재 선택은 유지하고, 사라진 항목은 자연히 빠진다.</summary>
-    public void Refresh()
+    /// <summary>
+    /// 새로고침. 현재 선택은 유지하고, 사라진 항목은 자연히 빠진다.
+    /// 지금 보던 폴더 자체가 지워졌거나 옮겨졌으면, 예전 목록을 그대로 두지 않고 남아 있는 가장 가까운 상위 폴더로 올라간다.
+    /// </summary>
+    public void Refresh() => Refresh(clearCache: true);
+
+    internal void Refresh(bool clearCache)
     {
         if (CurrentPath.Length == 0) return;
         var keep = _selected.Select(e => e.FullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        _owner.ClearMeasureCache();
-        _ = NavigateAsync(CurrentPath, record: false, select: keep);
+        if (clearCache) _owner.ClearMeasureCache();
+        _ = RefreshCoreAsync(CurrentPath, keep);
     }
 
-    private void Commit(string path, BrowseResult result)
+    private async Task RefreshCoreAsync(string path, IReadOnlyCollection<string> keep)
     {
+        if (await NavigateAsync(path, record: false, select: keep, refresh: true)) return;
+        if (!PathUtil.Equal(path, CurrentPath)) return;   // 그 사이 사용자가 다른 폴더를 열었다
+
+        string? survivor = await Task.Run(() =>
+        {
+            if (Directory.Exists(path)) return null;      // 폴더는 있는데 못 읽은 경우 — 그대로 둔다(안내는 이미 떴다)
+            for (string? p = PathUtil.Parent(path); p != null; p = PathUtil.Parent(p))
+                if (Directory.Exists(p)) return p;
+            return null;
+        });
+        if (survivor == null || !PathUtil.Equal(path, CurrentPath)) return;
+
+        // 기록에는 남기지 않는다: 뒤로 가기로 사라진 폴더에 되돌아오게 하지 않는다.
+        if (await NavigateAsync(survivor, record: false, refresh: false))
+            Notice = $"보던 폴더가 없어져 상위 폴더로 이동했습니다: {path}";
+    }
+
+    /// <summary>바뀐 게 없는지(같은 항목·같은 크기·같은 수정 시각) 확인한다. 없으면 목록을 다시 그리지 않는다.</summary>
+    private static bool SameListing(IReadOnlyList<FsEntry> current, IReadOnlyList<FsEntry> fresh)
+    {
+        if (current.Count != fresh.Count) return false;
+        var map = new Dictionary<string, FsEntry>(current.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var e in current) map[e.FullPath] = e;
+        foreach (var e in fresh)
+        {
+            if (!map.TryGetValue(e.FullPath, out var old)) return false;
+            if (old.IsDirectory != e.IsDirectory || old.Size != e.Size || old.Modified != e.Modified) return false;
+        }
+        return true;
+    }
+
+    /// <summary>새로고침으로 목록이 바뀌기 직전 / 직후. 화면이 스크롤 위치를 지키는 데 쓴다.</summary>
+    public event EventHandler? ListRefreshing;
+    public event EventHandler? ListRefreshed;
+
+    private void Commit(string path, BrowseResult result, bool refresh)
+    {
+        if (refresh && PathUtil.Equal(path, _currentPath) && _status == result.Status && SameListing(_all, result.Entries))
+        {
+            StatusMessage = result.Message;   // 바뀐 것이 없다 — 스크롤과 선택을 건드리지 않는다
+            return;
+        }
+
+        if (refresh) ListRefreshing?.Invoke(this, EventArgs.Empty);
+
         CurrentPath = path;
         var segments = PathUtil.Segments(path);
         Breadcrumb = segments
@@ -265,8 +319,94 @@ public sealed class QuickMovePaneViewModel : ObservableObject
 
         BackCommand.RaiseCanExecuteChanged();
         ForwardCommand.RaiseCanExecuteChanged();
-        _owner.OnPaneNavigated(this);
+        if (refresh) _owner.OnPaneRefreshed();
+        else
+        {
+            _owner.OnPaneNavigated(this);
+            StartWatching(path);
+        }
         _ = RefreshVolumeInfoAsync();
+        if (refresh) ListRefreshed?.Invoke(this, EventArgs.Empty);
+    }
+
+    // ------------------------------------------------------------------ 폴더 변화 감시
+    // 다른 탭에서 지우거나 탐색기에서 바꾼 것도 이 목록에 곧 반영되게 한다. 목록은 열 때 한 번 읽은 스냅숏이라
+    // 감시하지 않으면 지운 파일이 계속 보이고, 그 파일을 대기열에 넣었다가 "찾을 수 없음"으로 실패한다.
+
+    private FileSystemWatcher? _watcher;
+    private Timer? _watchTimer;
+    private const int WatchDebounceMs = 400;
+
+    private void StartWatching(string path)
+    {
+        StopWatching();
+        if (_status != BrowseStatus.Ok) return;   // 못 읽는 폴더는 감시할 것이 없다
+        try
+        {
+            var w = new FileSystemWatcher(path)
+            {
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.Size | NotifyFilters.LastWrite | NotifyFilters.Attributes,
+                IncludeSubdirectories = false,
+                InternalBufferSize = 64 * 1024,
+            };
+            w.Created += OnWatchEvent;
+            w.Deleted += OnWatchEvent;
+            w.Changed += OnWatchEvent;
+            w.Renamed += OnWatchEvent;
+            w.Error += OnWatchError;
+            w.EnableRaisingEvents = true;
+            _watcher = w;
+        }
+        catch (Exception)
+        {
+            // 감시할 수 없는 위치(일부 네트워크 경로 등). 수동 새로고침(F5)과 이동 후 갱신은 그대로 동작한다.
+            _watcher = null;
+        }
+    }
+
+    /// <summary>
+    /// 이동 실행 중에는 감시를 놓는다. 폴더 핸들을 잡은 채로 그 폴더(또는 상위 폴더)를 옮기게 하지 않고,
+    /// 파일이 쏟아지는 동안 이벤트가 쌓이는 것도 막는다. 끝나면 <see cref="ResumeWatching"/> 으로 다시 건다.
+    /// </summary>
+    public void SuspendWatching()
+    {
+        _watchTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+        StopWatching();
+    }
+
+    public void ResumeWatching()
+    {
+        if (CurrentPath.Length > 0 && _watcher == null) StartWatching(CurrentPath);
+    }
+
+    private void StopWatching()
+    {
+        var w = Interlocked.Exchange(ref _watcher, null);
+        if (w == null) return;
+        w.EnableRaisingEvents = false;   // 핸들을 바로 놓아야 이 폴더를 다른 곳에서 지우거나 옮길 수 있다
+        w.Dispose();
+    }
+
+    private void OnWatchEvent(object sender, FileSystemEventArgs e)
+    {
+        try { (_watchTimer ??= new Timer(_ => _owner.PostToUi(OnWatchQuiet))).Change(WatchDebounceMs, Timeout.Infinite); }
+        catch (ObjectDisposedException) { }
+    }
+
+    /// <summary>버퍼가 넘쳤거나 폴더 자체가 사라졌다 — 감시를 놓고 전체를 다시 읽는다.</summary>
+    private void OnWatchError(object sender, ErrorEventArgs e) => _owner.PostToUi(() =>
+    {
+        StopWatching();
+        Refresh(clearCache: false);
+        if (CurrentPath.Length > 0 && Directory.Exists(CurrentPath)) StartWatching(CurrentPath);
+    });
+
+    private void OnWatchQuiet()
+    {
+        // 이동 중에는 파일이 쏟아져 들어온다. 끝날 때 한 번에 다시 읽는다.
+        if (_owner.Phase == QuickMovePhase.Running) { _watchTimer?.Change(WatchDebounceMs * 2, Timeout.Infinite); return; }
+        if (CurrentPath.Length == 0) return;
+        Refresh(clearCache: false);
     }
 
     private void RaiseState()

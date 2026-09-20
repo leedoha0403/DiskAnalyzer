@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -136,6 +137,8 @@ public partial class QuickMovePane : UserControl, IShortcutTarget
             _vm.PropertyChanged -= OnVmPropertyChanged;
             _vm.SelectRequested -= OnSelectRequested;
             _vm.SortChanged -= OnSortChanged;
+            _vm.ListRefreshing -= OnListRefreshing;
+            _vm.ListRefreshed -= OnListRefreshed;
         }
 
         _vm = e.NewValue as QuickMovePaneViewModel;
@@ -144,7 +147,36 @@ public partial class QuickMovePane : UserControl, IShortcutTarget
         _vm.PropertyChanged += OnVmPropertyChanged;
         _vm.SelectRequested += OnSelectRequested;
         _vm.SortChanged += OnSortChanged;
+        _vm.ListRefreshing += OnListRefreshing;
+        _vm.ListRefreshed += OnListRefreshed;
         UpdateHeaders();
+    }
+
+    // 파일 변화로 목록을 다시 읽어도 보고 있던 위치에서 튀지 않게 스크롤을 지킨다.
+    private double _keepOffset;
+
+    private ScrollViewer? ListScroller()
+    {
+        static ScrollViewer? Find(DependencyObject d)
+        {
+            for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(d); i++)
+            {
+                var child = System.Windows.Media.VisualTreeHelper.GetChild(d, i);
+                if (child is ScrollViewer sv) return sv;
+                if (Find(child) is { } inner) return inner;
+            }
+            return null;
+        }
+        return Find(ItemList);
+    }
+
+    private void OnListRefreshing(object? sender, EventArgs e) => _keepOffset = ListScroller()?.VerticalOffset ?? 0;
+
+    private void OnListRefreshed(object? sender, EventArgs e)
+    {
+        double offset = _keepOffset;
+        if (offset <= 0) return;
+        Dispatcher.BeginInvoke(() => ListScroller()?.ScrollToVerticalOffset(offset), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -271,7 +303,26 @@ public partial class QuickMovePane : UserControl, IShortcutTarget
 
     private void OnChipClick(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: string path }) _vm?.NavigateTo(path);
+        if (_vm == null || sender is not Button { Tag: string path } button) return;
+
+        // 폴더가 없어진 즐겨찾기: 열 수 없으니 목록에서 지우고, 어떤 경로였는지만 알리고 끝낸다.
+        if (button.DataContext is QuickLocation { IsFavorite: true } loc && (loc.IsMissing || !Directory.Exists(path)))
+        {
+            _vm.ToggleFavorite(path);
+            MessageBox.Show(Window.GetWindow(this),
+                $"즐겨찾기 폴더를 찾을 수 없어 목록에서 삭제했습니다.\n\n{path}",
+                "없어진 즐겨찾기", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        _vm.NavigateTo(path);
+    }
+
+    private void OnChipRemoveClick(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;   // 바깥 칩의 "이 폴더 열기"가 함께 눌리지 않게
+        if (_vm != null && sender is Button { DataContext: QuickLocation loc } && _vm.IsFavoritePath(loc.Path))
+            _vm.ToggleFavorite(loc.Path);
     }
 
     private void OnChipRightClick(object sender, MouseButtonEventArgs e)

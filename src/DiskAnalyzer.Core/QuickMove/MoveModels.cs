@@ -119,6 +119,12 @@ public sealed class MoveOptions
 
     public IProgress<MoveProgress>? Progress { get; set; }
 
+    /// <summary>동시에 처리할 파일 작업 수. 0 = 자동(드라이브 종류에 맞춤: SSD 는 코어 수만큼 최대 12, HDD 는 2), 1 = 순서대로.</summary>
+    public int Parallelism { get; set; }
+
+    /// <summary>64 MB 이상 파일을 다른 볼륨으로 복사할 때 버퍼링 없는 I/O 를 쓴다(캐시를 오염시키지 않는다).</summary>
+    public bool UnbufferedLargeCopy { get; set; } = true;
+
     /// <summary>테스트 전용: 같은 볼륨이어도 이름 바꾸기를 건너뛰고 복사 후 삭제 경로로 처리한다(다른 드라이브 이동을 재현).</summary>
     internal bool ForceCopy { get; set; }
 }
