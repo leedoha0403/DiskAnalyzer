@@ -15,6 +15,7 @@
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>DiskAnalyzer</AssemblyName>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
 </Project>
