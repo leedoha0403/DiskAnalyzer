@@ -1,11 +1,15 @@
 using System.Collections;
+using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using DiskAnalyzer.App.Controls;
+using DiskAnalyzer.App.Keymaps;
 using DiskAnalyzer.App.ViewModels;
+using DiskAnalyzer.Core.Keymaps;
+using DiskAnalyzer.App.ViewModels.QuickMove;
 using DiskAnalyzer.Core.Models;
 using DiskAnalyzer.Core.Scanning;
 using DiskAnalyzer.Core.Services;
@@ -57,7 +61,17 @@ public partial class MainWindow : Window
             UpdateTreemap();
         };
 
+        // 빠른 이동 도크: 켜고 끄면 바로 배치를 다시 잡는다. 도크의 ✕ / ↗ 는 여기서 받는다.
+        _vm.QuickMove.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(QuickMoveViewModel.IsDockVisible)) ApplyLayout();
+        };
+        QuickMovePanel.DockCloseRequested += (_, _) => _vm.QuickMove.IsDockVisible = false;
+        QuickMovePanel.OpenAsTabRequested += (_, _) => Tabs.SelectedIndex = (int)LiveTab.QuickMove;
+
         SourceInitialized += (_, _) => ApplyDarkTitleBar();
+        InstallShortcuts();
+        Loaded += (_, _) => ApplyLayout();   // 저장된 도크 표시 상태를 처음부터 반영
         Loaded += OnLoadedStartupScan;
     }
 
@@ -163,6 +177,91 @@ public partial class MainWindow : Window
         UpdateTreemap();
     }
 
+    private const double DefaultDockWidth = 400;
+    private const double MinDockWidth = 300;
+
+    /// <summary>
+    /// 빠른 이동 화면은 <b>인스턴스 하나</b>를 두 곳에서 번갈아 쓴다.
+    ///  · "빠른 이동" 탭          : TabHost 안, 넓은 배치(출발지 | 목적지)
+    ///  · 다른 탭 + 도크 켜짐     : 작업 영역 오른쪽 DockHost, 좁은 배치(출발지 위 / 목적지 아래)
+    /// 인스턴스가 같아서 어디서 고르든 선택 · 대기열 · 진행 상태가 이어진다. 폴더 / Treemap 을 보다가 우클릭으로 보낸 항목을
+    /// 탭을 바꾸지 않고 도크에서 곧바로 이어서 처리할 수 있다.
+    /// </summary>
+    private void PlaceQuickMove(LiveTab tab)
+    {
+        bool onTab = tab == LiveTab.QuickMove;
+        bool docked = !onTab && _vm.QuickMove.IsDockVisible;
+
+        if (docked)
+        {
+            if (!ReferenceEquals(QuickMovePanel.Parent, DockHost))
+            {
+                DetachQuickMove();
+                DockHost.Child = QuickMovePanel;
+            }
+
+            QuickMovePanel.IsCompact = true;
+            QuickMovePanel.Visibility = Visibility.Visible;
+            DockHost.Visibility = Visibility.Visible;
+            DockSplitter.Visibility = Visibility.Visible;
+            DockSplitterColumn.Width = GridLength.Auto;
+            DockColumn.MinWidth = MinDockWidth;
+            DockColumn.Width = new GridLength(_vm.QuickMove.DockWidth > 0 ? _vm.QuickMove.DockWidth : DefaultDockWidth);
+            return;
+        }
+
+        DockHost.Visibility = Visibility.Collapsed;
+        DockSplitter.Visibility = Visibility.Collapsed;
+        DockSplitterColumn.Width = new GridLength(0);
+        DockColumn.MinWidth = 0;
+        DockColumn.Width = new GridLength(0);
+
+        if (!ReferenceEquals(QuickMovePanel.Parent, TabHost))
+        {
+            DetachQuickMove();
+            TabHost.Children.Add(QuickMovePanel);
+        }
+        QuickMovePanel.IsCompact = false;
+        QuickMovePanel.Visibility = onTab ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void DetachQuickMove()
+    {
+        switch (QuickMovePanel.Parent)
+        {
+            case Panel panel: panel.Children.Remove(QuickMovePanel); break;
+            case Decorator decorator: decorator.Child = null; break;
+            case ContentControl content: content.Content = null; break;
+        }
+    }
+
+    private void OnDockSplitterDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+        => _vm.QuickMove.DockWidth = DockColumn.ActualWidth;
+
+    /// <summary>
+    /// 이동 (좌/우) / 대기열에 추가를 눌렀을 때 <b>지금 보던 탭을 떠나지 않고</b> 빠른 이동을 보이게 한다.
+    /// 분석 탭이면 오른쪽에 도크를 켠다. 이미 빠른 이동 탭이면 그대로 둔다.
+    /// </summary>
+    private void RevealQuickMove()
+    {
+        if ((LiveTab)Tabs.SelectedIndex == LiveTab.QuickMove) return;
+        _vm.QuickMove.IsDockVisible = true;   // 속성 변경 → ApplyLayout
+    }
+
+    /// <summary>
+    /// 이동 중에 창을 닫으면 진행 중인 이동이 도중에 끊긴다(이미 옮긴 항목은 되돌려지지 않는다). 한 번 확인한다.
+    /// </summary>
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        base.OnClosing(e);
+        if (_vm.QuickMove.Phase != QuickMovePhase.Running) return;
+
+        var answer = MessageBox.Show(this,
+            "빠른 이동이 진행 중입니다.\n지금 종료하면 이동이 중간에 멈추고, 이미 옮긴 항목은 원래 위치로 복원되지 않습니다.\n\n그래도 종료하시겠습니까?",
+            "이동 중", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (answer != MessageBoxResult.Yes) e.Cancel = true;
+    }
+
     /// <summary>
     /// 탭 + 분할 보기 상태에 따라 무엇을 보여 줄지 정한다.
     ///  - 폴더 / Treemap 탭: 이동 막대를 함께 쓴다.
@@ -182,6 +281,17 @@ public partial class MainWindow : Window
         LargeFilesPanel.Visibility = tab == LiveTab.LargeFiles ? Visibility.Visible : Visibility.Collapsed;
         FileTypesPanel.Visibility = tab == LiveTab.FileTypes ? Visibility.Visible : Visibility.Collapsed;
         CleanupPanel.Visibility = tab == LiveTab.Cleanup ? Visibility.Visible : Visibility.Collapsed;
+        PlaceQuickMove(tab);
+
+        // 빠른 이동 탭과 도크가 켜진 동안에는 드라이브 카드를 접어 세로 공간을 넓힌다(드라이브 여유 공간은 각 패널이 보여 준다).
+        bool quickTab = tab == LiveTab.QuickMove;
+        DriveCards.Visibility = quickTab || _vm.QuickMove.IsDockVisible ? Visibility.Collapsed : Visibility.Visible;
+
+        // 도크는 다른 탭 오른쪽에 붙는 것이라, 빠른 이동 탭 자체에서는 이 스위치가 의미가 없다.
+        DockToggle.Visibility = quickTab ? Visibility.Collapsed : Visibility.Visible;
+
+        // 크기 / 확장자 / 검색 막대는 스캔 결과를 거르는 도구라 빠른 이동에서는 의미가 없다.
+        FilterBar.Visibility = tab == LiveTab.QuickMove ? Visibility.Collapsed : Visibility.Visible;
 
         FolderPanel.Visibility = folder ? Visibility.Visible : Visibility.Collapsed;
         TreemapPanel.Visibility = treemap ? Visibility.Visible : Visibility.Collapsed;
@@ -351,7 +461,14 @@ public partial class MainWindow : Window
 
     private void OnSearchKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter) _vm.SearchCommand.Execute(null);
+        if (e.Key == Key.Enter) { _vm.SearchCommand.Execute(null); return; }
+
+        // 입력창에서는 라우터가 물러나 있으므로(글자 입력 우선), "검색 취소" 만 여기서 현재 키맵으로 확인한다.
+        if (KeyInput.TryGetChord(e, out var chord, out _) && Keymap.Current.Find(chord) == CommandIds.SearchCancel)
+        {
+            ExecuteShortcut(CommandIds.SearchCancel);
+            e.Handled = true;
+        }
     }
 
     // ---------------------------------------------------------------- 정렬
@@ -395,6 +512,118 @@ public partial class MainWindow : Window
     private void OnCopyName(object sender, RoutedEventArgs e)
     {
         if (RowOf(sender) is { } row) TrySetClipboard(row.Name);
+    }
+
+    // ---------------------------------------------------------------- 빠른 이동으로 보내기 (분석 탭 -> 이동 탭)
+    //
+    // 폴더 / 큰 파일 / Treemap 에서 옮길 것을 찾고 나면, 빠른 이동 탭에서 같은 위치까지 다시 폴더를 타고 들어갈 필요가 없어야 한다.
+    //  이동 (좌): 이 항목을 출발지(왼쪽) 패널에서 선택한 채로 연다.
+    //  이동 (우): 이 폴더(파일이면 그 파일이 있는 폴더)를 목적지(오른쪽) 패널로 연다.
+
+    private static IReadOnlyList<EntryRow> SelectedRows(object sender)
+    {
+        if (sender is not MenuItem item) return Array.Empty<EntryRow>();
+        var menu = ItemsControl.ItemsControlFromItemContainer(item) as ContextMenu ?? item.Parent as ContextMenu;
+        return (menu?.PlacementTarget as ListView)?.SelectedItems.OfType<EntryRow>().ToList() ?? new List<EntryRow>();
+    }
+
+    private void OnSendLeft(object sender, RoutedEventArgs e)
+    {
+        var rows = SelectedRows(sender);
+        if (rows.Count > 0) SendToQuickMoveSource(rows.Select(r => r.FullPath).ToList());
+        else SendCurrentFolder(left: true);
+    }
+
+    private void OnSendRight(object sender, RoutedEventArgs e)
+    {
+        var rows = SelectedRows(sender);
+        if (rows.Count > 0) SendToQuickMoveDestination(FolderOf(rows[0].FullPath, rows[0].IsDirectory));
+        else SendCurrentFolder(left: false);
+    }
+
+    private void OnSendQueue(object sender, RoutedEventArgs e)
+    {
+        var rows = SelectedRows(sender);
+        if (rows.Count == 0)
+        {
+            _vm.StatusMessage = "대기열에 담을 항목을 먼저 선택하세요.";
+            return;
+        }
+        RevealQuickMove();
+        _ = _vm.QuickMove.AddPathsToQueueAsync(rows.Select(r => r.FullPath).ToList());
+    }
+
+    private static string? FolderOf(string path, bool isDirectory)
+        => isDirectory ? path : Path.GetDirectoryName(path);
+
+    /// <summary>선택한 항목이 없으면(빈 곳 우클릭) 지금 보고 있는 폴더를 대상으로 한다.</summary>
+    private void SendCurrentFolder(bool left)
+    {
+        string folder = _vm.CurrentPath;
+        if (string.IsNullOrEmpty(folder))
+        {
+            _vm.StatusMessage = "보낼 폴더가 없습니다. 먼저 스캔하거나 항목을 선택하세요.";
+            return;
+        }
+        RevealQuickMove();
+        _ = left ? _vm.QuickMove.OpenSourceFolderAsync(folder) : _vm.QuickMove.SendToDestinationAsync(folder);
+    }
+
+    private void SendToQuickMoveSource(IReadOnlyList<string> paths)
+    {
+        RevealQuickMove();
+        _ = _vm.QuickMove.SendToSourceAsync(paths);
+    }
+
+    private void SendToQuickMoveDestination(string? folder)
+    {
+        if (string.IsNullOrEmpty(folder)) return;
+        RevealQuickMove();
+        _ = _vm.QuickMove.SendToDestinationAsync(folder);
+    }
+
+    // Treemap 우클릭 메뉴: 사각형 위면 그 항목, 빈 곳이면 지금 폴더.
+
+    private void OnTreemapMenuOpened(object sender, RoutedEventArgs e)
+    {
+        var visibility = Treemap.ContextItem != null ? Visibility.Visible : Visibility.Collapsed;
+        TmOpenExplorer.Visibility = visibility;
+        TmCopyPath.Visibility = visibility;
+        TmSeparator.Visibility = visibility;
+        TmSendQueue.Visibility = visibility;
+    }
+
+    private void OnTreemapOpenExplorer(object sender, RoutedEventArgs e)
+    {
+        if (Treemap.ContextItem is { } item) ShellService.OpenInExplorer(item.FullPath, item.IsDirectory);
+    }
+
+    private void OnTreemapCopyPath(object sender, RoutedEventArgs e)
+    {
+        if (Treemap.ContextItem is { } item) TrySetClipboard(item.FullPath);
+    }
+
+    private void OnTreemapSendLeft(object sender, RoutedEventArgs e)
+    {
+        if (Treemap.ContextItem is { } item) SendToQuickMoveSource(new[] { item.FullPath });
+        else SendCurrentFolder(left: true);
+    }
+
+    private void OnTreemapSendQueue(object sender, RoutedEventArgs e)
+    {
+        if (Treemap.ContextItem is not { } item)
+        {
+            _vm.StatusMessage = "대기열에 담을 사각형 위에서 우클릭하세요.";
+            return;
+        }
+        RevealQuickMove();
+        _ = _vm.QuickMove.AddPathsToQueueAsync(new[] { item.FullPath });
+    }
+
+    private void OnTreemapSendRight(object sender, RoutedEventArgs e)
+    {
+        if (Treemap.ContextItem is { } item) SendToQuickMoveDestination(FolderOf(item.FullPath, item.IsDirectory));
+        else SendCurrentFolder(left: false);
     }
 
     private void OnShowProperties(object sender, RoutedEventArgs e)

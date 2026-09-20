@@ -1,0 +1,263 @@
+<Window x:Class="DiskAnalyzer.App.Views.KeyboardShortcutsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="단축키 설정" Width="900" Height="700" MinWidth="720" MinHeight="520"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource WindowBackground}"
+        Foreground="{DynamicResource TextBrush}"
+        FontFamily="Segoe UI, Malgun Gothic" FontSize="13"
+        TextOptions.TextFormattingMode="Display" UseLayoutRounding="True"
+        PreviewKeyDown="OnWindowPreviewKeyDown"
+        PreviewMouseDown="OnWindowPreviewMouseDown"
+        Deactivated="OnDeactivated"
+        Closing="OnClosing">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <!-- 단축키 칸: 평소에는 키 글자, 입력 대기 중에는 안내 문구 -->
+        <Style x:Key="KeyCell" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource BorderBrushStrong}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate x:Key="KeyCellTemplate">
+            <Button Style="{StaticResource KeyCell}" Click="OnKeyCellClick" Tag="{Binding}"
+                    AutomationProperties.AutomationId="{Binding Id, StringFormat=Key_{0}}"
+                    ToolTip="클릭하거나 더블클릭한 뒤 새 단축키를 누르세요">
+                <TextBlock>
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="{Binding ShortcutText}" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsUnassigned}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+                                    <Setter Property="FontWeight" Value="Normal" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsConflict}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsCapturing}" Value="True">
+                                    <Setter Property="Text" Value="[ 새 단축키를 누르세요... ]" />
+                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                    <Setter Property="FontWeight" Value="Normal" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Button>
+        </DataTemplate>
+
+        <DataTemplate x:Key="StatusCellTemplate">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsConflict}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ResetCellTemplate">
+            <Button Content="↺" Style="{StaticResource LinkButton}" Width="30" Click="OnResetRowClick" Tag="{Binding}"
+                    ToolTip="{Binding ResetToolTip}"
+                    AutomationProperties.AutomationId="{Binding Id, StringFormat=Reset_{0}}"
+                    Visibility="{Binding IsModified, Converter={StaticResource BoolToVis}}" />
+        </DataTemplate>
+
+        <!-- 충돌한 줄은 배경을 옅게 강조한다 -->
+        <Style x:Key="ShortcutRowStyle" TargetType="ListViewItem" BasedOn="{StaticResource DataListItem}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderThickness="0">
+                            <GridViewRowPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectionBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsConflict}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="24,20,24,18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="단축키 설정" Style="{StaticResource H1}" />
+            <TextBlock Text="원하는 기능의 단축키를 변경할 수 있습니다. 칸을 클릭한 뒤 새 키 조합을 누르세요. 적용을 눌러야 실제로 바뀝니다."
+                       Style="{StaticResource Caption}" Margin="0,4,0,12" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!-- 검색 / 필터 / 기본값 복원 -->
+        <Grid Grid.Row="1" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Grid>
+                <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.AutomationId="ShortcutSearch"
+                         ToolTip="기능 이름 또는 단축키로 검색 (예: 복사, copy, Ctrl)" />
+                <TextBlock Text="🔍 기능 또는 단축키 검색..." IsHitTestVisible="False" Margin="10,0,0,0"
+                           VerticalAlignment="Center" Foreground="{DynamicResource TextDimBrush}" FontSize="12.5">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+
+            <ComboBox Grid.Column="1" ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory}"
+                      Width="120" Margin="8,0,0,0" ToolTip="분류" />
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                <CheckBox Content="변경된 단축키만 표시" IsChecked="{Binding ShowModifiedOnly}" Margin="0,0,14,0" />
+                <ToggleButton IsChecked="{Binding ShowConflictsOnly}" Padding="8,3"
+                              Visibility="{Binding HasConflicts, Converter={StaticResource BoolToVis}}"
+                              AutomationProperties.AutomationId="ConflictFilter"
+                              ToolTip="충돌 항목만 보기">
+                    <TextBlock Text="{Binding ConflictText}" Foreground="{DynamicResource WarningBrush}" />
+                </ToggleButton>
+            </StackPanel>
+
+            <Button Grid.Column="3" Content="기본값 복원" Padding="12,5" Click="OnResetAllClick"
+                    AutomationProperties.AutomationId="ResetAll" />
+        </Grid>
+
+        <!-- 충돌 해결 안내 (10, 12, 34) -->
+        <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,0,0,10" Padding="14,10"
+                Visibility="{Binding HasPendingConflict, Converter={StaticResource BoolToVis}}"
+                BorderBrush="{DynamicResource WarningBrush}" AutomationProperties.AutomationId="ConflictBanner">
+            <StackPanel>
+                <TextBlock Text="단축키 충돌" FontWeight="SemiBold" Foreground="{DynamicResource WarningBrush}" />
+                <TextBlock Text="{Binding PendingConflictText}" Margin="0,4,0,8" TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="{Binding UnassignOtherLabel}" Click="OnResolveUnassign" Padding="12,5"
+                            Style="{StaticResource AccentButton}" Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="ResolveUnassign" />
+                    <Button Content="새 단축키 다시 입력" Click="OnResolveRetry" Padding="12,5" Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="ResolveRetry" />
+                    <Button Content="취소" Click="OnResolveCancel" Padding="12,5"
+                            AutomationProperties.AutomationId="ResolveCancel" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- 목록 -->
+        <Border Grid.Row="3" Style="{StaticResource Card}" Padding="0">
+            <ListView x:Name="ShortcutList" Style="{StaticResource DataList}" ItemsSource="{Binding View}"
+                      SelectedItem="{Binding SelectedRow}" SelectionMode="Single"
+                      ItemContainerStyle="{StaticResource ShortcutRowStyle}"
+                      AutomationProperties.AutomationId="ShortcutList"
+                      PreviewKeyDown="OnListPreviewKeyDown"
+                      PreviewMouseRightButtonDown="OnListRightDown"
+                      MouseDoubleClick="OnListDoubleClick">
+                <ListView.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="단축키 변경" Click="OnMenuChange" />
+                        <MenuItem Header="단축키 해제 (미할당)" Click="OnMenuUnassign" />
+                        <MenuItem Header="기본값으로 복원" Click="OnMenuReset" />
+                    </ContextMenu>
+                </ListView.ContextMenu>
+                <ListView.View>
+                    <GridView>
+                        <GridViewColumn Header="분류" Width="100" DisplayMemberBinding="{Binding Category}" />
+                        <GridViewColumn Header="기능" Width="290" DisplayMemberBinding="{Binding Name}" />
+                        <GridViewColumn Header="현재 단축키" Width="210" CellTemplate="{StaticResource KeyCellTemplate}" />
+                        <GridViewColumn Header="상태" Width="90" CellTemplate="{StaticResource StatusCellTemplate}" />
+                        <GridViewColumn Header="초기화" Width="70" CellTemplate="{StaticResource ResetCellTemplate}" />
+                    </GridView>
+                </ListView.View>
+            </ListView>
+        </Border>
+
+        <!-- 안내 / 오류 -->
+        <TextBlock Grid.Row="4" Margin="0,10,0,0" TextWrapping="Wrap" MinHeight="18"
+                   Text="{Binding Message}" AutomationProperties.AutomationId="ShortcutMessage">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource Caption}">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding MessageIsError}" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+
+        <DockPanel Grid.Row="5" Margin="0,12,0,0">
+            <TextBlock DockPanel.Dock="Left" Text="{Binding ModifiedText}" Style="{StaticResource Caption}"
+                       VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="취소" Padding="18,7" MinWidth="90" Margin="0,0,8,0" Click="OnCancelClick"
+                        AutomationProperties.AutomationId="ShortcutCancel" />
+                <Button Content="적용" Padding="18,7" MinWidth="90" Style="{StaticResource AccentButton}"
+                        IsEnabled="{Binding CanApply}" Click="OnApplyClick"
+                        AutomationProperties.AutomationId="ShortcutApply" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

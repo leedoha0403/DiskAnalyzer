@@ -1,0 +1,415 @@
+<UserControl x:Class="DiskAnalyzer.App.Views.QuickMoveView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:DiskAnalyzer.App.Views"
+             xmlns:qm="clr-namespace:DiskAnalyzer.App.ViewModels.QuickMove"
+             xmlns:km="clr-namespace:DiskAnalyzer.App.Keymaps">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <!-- 중앙 이동 버튼: 방향이 한눈에 보이게 크게, 폭은 좁게(44px 안에서 32~36px). -->
+        <Style x:Key="MoveButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FontSize" Value="17" />
+            <Setter Property="Margin" Value="0,5" />
+        </Style>
+
+        <Style x:Key="QueueRemoveButton" TargetType="Button" BasedOn="{StaticResource LinkButton}">
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="ToolTip" Value="대기열에서 제거" />
+        </Style>
+
+        <Style x:Key="QueueRow" TargetType="ListViewItem" BasedOn="{StaticResource CardListItem}">
+            <Setter Property="ToolTip" Value="{Binding ToolTipText}" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+        </Style>
+
+        <DataTemplate x:Key="QueueItemTemplate" DataType="{x:Type qm:QueueItemViewModel}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="22" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Border Width="9" Height="9" CornerRadius="2" VerticalAlignment="Top" Margin="2,6,0,0">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{DynamicResource FileIconBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDirectory}" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource FolderIconBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                </Border>
+
+                <StackPanel Grid.Column="1">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Glyph}" Margin="6,0,0,0" Foreground="{DynamicResource WarningBrush}" />
+                        <TextBlock Text="{Binding ModeText}" Style="{StaticResource Caption}" Margin="10,0,0,0"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                    <!-- 출발 폴더와 목적 폴더를 나눠서 각각 줄인다. 한 줄로 이으면 뒤쪽(목적지)이 잘려서 안 보인다. -->
+                    <Grid ToolTip="{Binding RouteText}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding FromText}" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="1" Text="  →  " Style="{StaticResource Caption}" Foreground="{DynamicResource AccentBrush}" />
+                        <TextBlock Grid.Column="2" Text="{Binding DestDirectory}" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                    <TextBlock Text="{Binding StateText}" FontSize="11.5" TextWrapping="Wrap"
+                               Visibility="{Binding HasStateText, Converter={StaticResource BoolToVis}}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                        <Setter Property="Foreground" Value="{DynamicResource BarFillStrongBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Margin="12,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding SizeText}" Style="{StaticResource Numeric}" HorizontalAlignment="Right" />
+                    <TextBlock Text="{Binding DetailText}" Style="{StaticResource Caption}" HorizontalAlignment="Right" />
+                </StackPanel>
+
+                <Button Grid.Column="3" Content="×" Style="{StaticResource QueueRemoveButton}" Click="OnQueueRemoveClick"
+                        Tag="{Binding}" VerticalAlignment="Center" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ResultTemplate" DataType="{x:Type qm:ResultRowViewModel}">
+            <Grid ToolTip="{Binding Detail}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="26" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Icon}" FontSize="14" VerticalAlignment="Top" Margin="2,0,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource BarFillStrongBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding Text}" FontSize="11.5" TextWrapping="Wrap">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                        <Setter Property="Foreground" Value="{DynamicResource BarFillStrongBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+                <TextBlock Grid.Column="2" Text="{Binding SizeText}" Style="{StaticResource Numeric}"
+                           VerticalAlignment="Top" Margin="12,0,0,0" />
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <!-- 행/열 정의는 코드(ApplyLayoutMode)가 만든다.
+         넓은 화면(탭):  출발지 | 이동 컨트롤 | 목적지  /  대기열
+         좁은 화면(도크): 출발지(위) / 이동 컨트롤 / 목적지(아래) / 대기열 -->
+    <Grid x:Name="LayoutGrid" Margin="12">
+
+        <!-- 도크로 쓸 때만 보이는 제목 줄 -->
+        <Border x:Name="DockBar" Visibility="Collapsed" Padding="4,0,0,0">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="✕" Style="{StaticResource LinkButton}" Width="28" Click="OnDockClose"
+                        ToolTip="이동 도크 닫기" />
+                <Button DockPanel.Dock="Right" Content="↗" Style="{StaticResource LinkButton}" Width="28" Click="OnDockOpenAsTab"
+                        ToolTip="빠른 이동 탭에서 크게 보기" AutomationProperties.AutomationId="DockOpenTab" />
+                <TextBlock Text="빠른 이동" Style="{StaticResource H2}" VerticalAlignment="Center" />
+                <TextBlock Text="우클릭 → 이동 (좌/우)" Style="{StaticResource Caption}"
+                           VerticalAlignment="Center" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </Border>
+
+        <local:QuickMovePane x:Name="LeftPane" DataContext="{Binding Left}" />
+
+        <StackPanel x:Name="ControlsPanel" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <Button x:Name="MoveRightButton" Content="→" Command="{Binding MoveRightCommand}" Style="{StaticResource MoveButton}"
+                    AutomationProperties.AutomationId="MoveRight"
+                    km:ShortcutHint.Command="QuickMove.QueueSelected"
+                    km:ShortcutHint.Text="출발지에서 선택한 항목을 목적지 폴더로 옮길 대기열에 추가" />
+            <Button x:Name="MoveLeftButton" Content="←" Command="{Binding MoveLeftCommand}" Style="{StaticResource MoveButton}"
+                    AutomationProperties.AutomationId="MoveLeft"
+                    ToolTip="목적지에서 선택한 항목을 출발지 폴더로 옮길 대기열에 추가" />
+            <Button x:Name="SwapButton" Content="⇄" Command="{Binding SwapCommand}" Style="{StaticResource MoveButton}"
+                    AutomationProperties.AutomationId="SwapPanes"
+                    ToolTip="출발지와 목적지의 현재 경로를 서로 바꿉니다 (선택은 해제됩니다)" />
+        </StackPanel>
+
+        <local:QuickMovePane x:Name="RightPane" DataContext="{Binding Right}" />
+
+        <GridSplitter x:Name="QueueSplitter" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                      Height="4" Background="{DynamicResource BorderBrushSoft}" ResizeDirection="Rows"
+                      ResizeBehavior="PreviousAndNext" DragCompleted="OnSplitterDragCompleted"
+                      ToolTip="끌어서 대기열 영역의 높이를 조절합니다" />
+
+        <!-- ===== 이동 대기열 / 진행 / 결과 ===== -->
+        <Border x:Name="QueueBorder" CornerRadius="8" BorderThickness="1" Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource BorderBrushSoft}">
+            <DockPanel>
+
+                <!-- 머리글: 요약 / 안내 / 숨김 표시 / 접기 -->
+                <Grid x:Name="QueueHeader" DockPanel.Dock="Top" Margin="14,8,10,8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="{Binding HeaderText}" Style="{StaticResource H2}" VerticalAlignment="Center"
+                               AutomationProperties.AutomationId="QueueHeader" />
+                    <!-- 안내: 추가 결과 / 차단 사유. 대기열이 비어 있으면 사용법 한 줄. 넓은 화면에서는 머리글 옆, 도크에서는 아랫줄. -->
+                    <TextBlock x:Name="HintText" Grid.Column="1" Text="{Binding HeaderHint}" Style="{StaticResource Caption}"
+                               Foreground="{DynamicResource AccentBrush}" Margin="16,0,10,0" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" ToolTip="{Binding HeaderHint}" />
+                    <CheckBox x:Name="HiddenCheck" Grid.Column="2" Content="숨김 파일 표시" IsChecked="{Binding ShowHidden}" Margin="0,0,12,0"
+                              VerticalAlignment="Center" FontSize="11.5"
+                              ToolTip="숨김/시스템 속성 파일을 목록에 표시합니다. 보호 정책은 그대로 적용됩니다." />
+                    <Button x:Name="CompactStartButton" Grid.Column="3" Content="이동 시작" Command="{Binding StartCommand}"
+                            Style="{StaticResource AccentButton}" Padding="12,4" Margin="0,0,4,0" Visibility="Collapsed"
+                            AutomationProperties.AutomationId="DockStartMove" />
+                    <Button x:Name="QueueToggleButton" Grid.Column="4" Command="{Binding ToggleQueueCollapsedCommand}" Style="{StaticResource LinkButton}"
+                            Width="30" ToolTip="대기열 접기 / 펼치기" AutomationProperties.AutomationId="QueueToggle">
+                        <TextBlock FontSize="13">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="˅" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding QueueBodyOpen}" Value="False">
+                                            <Setter Property="Text" Value="˄" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
+                </Grid>
+
+                <!-- 본문(접으면 사라진다) -->
+                <Grid x:Name="QueueBody">
+
+                    <!-- 대기 중: 이동 예정 목록 -->
+                    <DockPanel Visibility="{Binding IsIdleView, Converter={StaticResource BoolToVis}}">
+
+                        <Border DockPanel.Dock="Bottom" Padding="14,8" Background="{DynamicResource SurfaceAltBrush}"
+                                BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0" CornerRadius="0,0,8,8">
+                            <Grid x:Name="FooterGrid">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel x:Name="FooterInfo" VerticalAlignment="Center" Margin="0,0,12,0">
+                                    <TextBlock x:Name="RouteHintText" Text="{Binding RouteHint}" Style="{StaticResource Caption}" TextWrapping="Wrap"
+                                               Visibility="{Binding HasRouteHint, Converter={StaticResource BoolToVis}}" />
+                                    <ItemsControl ItemsSource="{Binding SpaceLines}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type qm:SpaceLineViewModel}">
+                                                <TextBlock Text="{Binding Text}" FontSize="11.5" TextWrapping="Wrap">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsProblem}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource BarFillStrongBrush}" />
+                                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+
+                                <WrapPanel x:Name="FooterButtons" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="충돌 시" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <ComboBox ItemsSource="{Binding PolicyOptions}" SelectedItem="{Binding SelectedPolicy}"
+                                              Width="150" Margin="0,0,14,0"
+                                              ToolTip="이름이 같은 항목을 만났을 때의 기본 동작. '항목별 확인'이 가장 안전합니다." />
+                                    <Button Content="목록 비우기" Command="{Binding ClearQueueCommand}" Margin="0,0,8,0"
+                                            AutomationProperties.AutomationId="ClearQueue" />
+                                    <Button x:Name="FooterStartButton" Content="이동 시작" Command="{Binding StartCommand}" Style="{StaticResource AccentButton}"
+                                            Padding="20,7" AutomationProperties.AutomationId="StartMove"
+                                            km:ShortcutHint.Command="QuickMove.Start"
+                                            km:ShortcutHint.Text="검사 후 이동을 시작합니다" />
+                                </WrapPanel>
+                            </Grid>
+                        </Border>
+
+                        <Grid>
+                            <ListView x:Name="QueueList" AutomationProperties.AutomationId="QueueList"
+                                      Style="{StaticResource CardList}" ItemsSource="{Binding Queue}"
+                                      ItemContainerStyle="{StaticResource QueueRow}"
+                                      ItemTemplate="{StaticResource QueueItemTemplate}"
+                                      SelectionMode="Extended">
+                                <ListView.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="대기열에서 제거" Click="OnQueueMenuRemove" />
+                                        <MenuItem Header="대상 폴더 열기" Click="OnQueueMenuOpenTarget" />
+                                        <MenuItem Header="원본 위치 열기" Click="OnQueueMenuOpenSource" />
+                                    </ContextMenu>
+                                </ListView.ContextMenu>
+                            </ListView>
+
+                            <!-- 대기열이 비어 있을 때의 안내 -->
+                            <TextBlock IsHitTestVisible="False" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       TextAlignment="Center" LineHeight="20"
+                                       Text="이동할 파일이나 폴더를 왼쪽에서 선택하고 →를 누르세요.&#10;오른쪽 패널로 끌어다 놓아도 됩니다. 놓는 즉시 이동하지 않고 여기에 쌓입니다.">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Caption}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Queue.Count}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </DockPanel>
+
+                    <!-- 이동 중: 진행 상태 -->
+                    <Grid Margin="16,4,16,14" Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <ProgressBar Value="{Binding ProgressFraction, Mode=OneWay}" Maximum="1" Height="10" Margin="0,4,0,12" />
+
+                        <UniformGrid x:Name="ProgressStats" Grid.Row="1" Columns="5">
+                            <StackPanel>
+                                <TextBlock Text="진행률" Style="{StaticResource Caption}" />
+                                <TextBlock Text="{Binding ProgressPercent}" Style="{StaticResource Numeric}" FontSize="17" FontWeight="SemiBold" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="처리 파일" Style="{StaticResource Caption}" />
+                                <TextBlock Text="{Binding ProgressFiles}" Style="{StaticResource Numeric}" FontSize="14" />
+                                <TextBlock Text="{Binding ProgressItem}" Style="{StaticResource Caption}" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="처리 용량" Style="{StaticResource Caption}" />
+                                <TextBlock Text="{Binding ProgressBytes}" Style="{StaticResource Numeric}" FontSize="14" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="속도" Style="{StaticResource Caption}" />
+                                <TextBlock Text="{Binding SpeedText}" Style="{StaticResource Numeric}" FontSize="14" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="남은 시간" Style="{StaticResource Caption}" />
+                                <TextBlock Text="{Binding RemainingText}" Style="{StaticResource Numeric}" FontSize="14" />
+                            </StackPanel>
+                        </UniformGrid>
+
+                        <StackPanel Grid.Row="2" Margin="0,12,0,0">
+                            <TextBlock Text="현재 파일" Style="{StaticResource Caption}" />
+                            <TextBlock Text="{Binding CurrentName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding CurrentRoute}" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+
+                        <WrapPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="{Binding PauseText}" Command="{Binding PauseCommand}" Margin="0,4,8,0"
+                                    MinWidth="90" AutomationProperties.AutomationId="PauseMove" />
+                            <Button Content="취소" Command="{Binding CancelCommand}" MinWidth="90" Margin="0,4,0,0"
+                                    AutomationProperties.AutomationId="CancelMove" />
+                        </WrapPanel>
+                    </Grid>
+
+                    <!-- 끝난 뒤: 결과 -->
+                    <DockPanel Margin="16,0,16,12" Visibility="{Binding IsFinished, Converter={StaticResource BoolToVis}}">
+                        <WrapPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                            <Button Content="이동한 위치 열기" Command="{Binding OpenResultCommand}" Margin="0,0,8,0"
+                                    AutomationProperties.AutomationId="OpenResult" />
+                            <ToggleButton Content="실패 항목만 보기" IsChecked="{Binding ShowFailedOnly}" Margin="0,0,8,0"
+                                          Visibility="{Binding HasFailures, Converter={StaticResource BoolToVis}}" />
+                            <Button Content="다시 시도" Command="{Binding RetryCommand}" Margin="0,0,8,0"
+                                    Visibility="{Binding CanRetry, Converter={StaticResource BoolToVis}}" />
+                            <Button Command="{Binding DismissResultCommand}" Style="{StaticResource AccentButton}" MinWidth="90"
+                                    AutomationProperties.AutomationId="DismissResult">
+                                <Button.Content>
+                                    <TextBlock>
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="완료" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsDriveLost}" Value="True">
+                                                        <Setter Property="Text" Value="작업 종료" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Button.Content>
+                            </Button>
+                        </WrapPanel>
+
+                        <StackPanel DockPanel.Dock="Top" Margin="0,2,0,8">
+                            <TextBlock Text="{Binding ResultDetail}" TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ResultHasProblem}" Value="True">
+                                                <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+
+                        <ListView Style="{StaticResource CardList}" ItemsSource="{Binding Results}"
+                                  ItemTemplate="{StaticResource ResultTemplate}" SelectionMode="Single"
+                                  AutomationProperties.AutomationId="ResultList" />
+                    </DockPanel>
+                </Grid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

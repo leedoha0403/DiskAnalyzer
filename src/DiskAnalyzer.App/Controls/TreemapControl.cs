@@ -431,6 +431,16 @@ public sealed class TreemapControl : FrameworkElement
         InvalidateVisual();
     }
 
+    /// <summary>마지막으로 우클릭한 사각형. 우클릭 메뉴가 이 항목에 대해 동작한다. 사각형이 없는 빈 곳이면 null.</summary>
+    public TreemapItem? ContextItem { get; private set; }
+
+    protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
+    {
+        base.OnMouseRightButtonDown(e);
+        ContextItem = HitTest(e.GetPosition(this));
+        if (ContextItem != null) ItemSelected?.Invoke(this, ContextItem);   // 메뉴가 어느 항목에 대한 것인지 보이게 선택 표시
+    }
+
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);

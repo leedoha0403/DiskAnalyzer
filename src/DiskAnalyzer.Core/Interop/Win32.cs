@@ -201,6 +201,41 @@ internal static class Win32
     internal static extern bool SetThreadErrorMode(uint dwNewMode, out uint lpOldMode);
 
     internal const uint SEM_FAILCRITICALERRORS = 0x0001;
+
+    // ---- 빠른 이동: 같은 볼륨 이름 바꾸기 / 다른 볼륨 복사 / 여유 공간 ----
+
+    internal const uint MOVEFILE_REPLACE_EXISTING = 0x1;
+    internal const uint COPY_FILE_FAIL_IF_EXISTS = 0x1;
+    internal const int ERROR_NOT_SAME_DEVICE = 17;
+    internal const int ERROR_REQUEST_ABORTED = 1235;
+    internal const int ERROR_DISK_FULL = 112;
+    internal const int ERROR_HANDLE_DISK_FULL = 39;
+
+    internal const uint PROGRESS_CONTINUE = 0;
+    internal const uint PROGRESS_CANCEL = 1;
+
+    /// <summary>MOVEFILE_COPY_ALLOWED 를 주지 않으므로 다른 볼륨이면 ERROR_NOT_SAME_DEVICE 로 실패한다. 이 실패가 "볼륨이 다르다"는 가장 정확한 신호다.</summary>
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "MoveFileExW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool MoveFileEx(string lpExistingFileName, string lpNewFileName, uint dwFlags);
+
+    internal delegate uint CopyProgressRoutine(
+        long totalFileSize, long totalBytesTransferred,
+        long streamSize, long streamBytesTransferred,
+        uint streamNumber, uint callbackReason,
+        IntPtr sourceFile, IntPtr destinationFile, IntPtr data);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "CopyFileExW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool CopyFileEx(
+        string lpExistingFileName, string lpNewFileName,
+        CopyProgressRoutine? lpProgressRoutine, IntPtr lpData,
+        ref int pbCancel, uint dwCopyFlags);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "GetDiskFreeSpaceExW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetDiskFreeSpaceEx(
+        string lpDirectoryName, out ulong lpFreeBytesAvailable, out ulong lpTotalNumberOfBytes, out ulong lpTotalNumberOfFreeBytes);
 }
 
 internal sealed class SafeFindHandle : SafeHandleZeroOrMinusOneIsInvalid

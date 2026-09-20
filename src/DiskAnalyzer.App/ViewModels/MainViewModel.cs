@@ -6,6 +6,7 @@ using DiskAnalyzer.Core.Models;
 using DiskAnalyzer.Core.Scanning;
 using DiskAnalyzer.Core.Services;
 using DiskAnalyzer.Core.Analysis;
+using DiskAnalyzer.App.ViewModels.QuickMove;
 
 namespace DiskAnalyzer.App.ViewModels;
 
@@ -37,6 +38,7 @@ public sealed class MainViewModel : ObservableObject
         Drives = new ObservableCollection<DriveInfoRow>(DriveService.GetLocalDrives());
         SelectedDrive = Drives.FirstOrDefault();
         IsElevated = DriveService.IsElevated();
+        QuickMove = new QuickMoveViewModel(() => CurrentPath);
 
         ScanSelectedCommand = new RelayCommand(() => StartScan(SelectedDrive?.RootPath), () => !IsScanning);
         ScanAllCommand = new RelayCommand(StartScanAll, () => !IsScanning);
@@ -323,6 +325,9 @@ public sealed class MainViewModel : ObservableObject
 
     /// <summary>53~66. 정리 추천 탭.</summary>
     public CleanupViewModel Cleanup { get; } = new();
+
+    /// <summary>빠른 이동 탭. 스캔 결과와 무관하게 실제 파일 시스템을 탐색해 파일을 옮긴다.</summary>
+    public QuickMoveViewModel QuickMove { get; }
 
     // ---------------------------------------------------------------- 47. 설정
 
