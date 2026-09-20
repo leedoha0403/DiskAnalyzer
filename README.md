@@ -7,6 +7,8 @@ Windows 10/11 용 디스크 용량 분석 프로그램. WizTree / TreeSize 와 �
 - 솔루션: `DiskAnalyzer.sln`
 - **배포용 실행 파일: `dist/DiskAnalyzer.exe`** — 단일 파일 · 자체 포함(.NET 설치 불필요), 그대로 복사해서 실행
   - `src/.../bin/Release/` 쪽 exe 는 옆의 DLL 과 .NET 9 Desktop Runtime 이 있어야 동작한다
+- **설명서(HTML): [`docs/index.html`](docs/index.html)** — 사용법 · 동작 원리 · 성능 수치와 draw.io 다이어그램 6개
+  (그림은 인터넷 연결이 필요하며, 원본은 `docs/diagrams/*.drawio`. 고친 뒤 `python docs/build.py` 로 다시 만든다)
 
 ---
 
