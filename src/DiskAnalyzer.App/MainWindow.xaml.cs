@@ -194,6 +194,7 @@ public partial class MainWindow : Window
     {
         bool onTab = tab == LiveTab.QuickMove;
         bool docked = !onTab && _vm.QuickMove.IsDockVisible;
+        _vm.QuickMove.IsPageVisible = onTab || docked;   // 보이는 순간 즐겨찾기를 확인한다
 
         if (docked)
         {

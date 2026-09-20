@@ -12,14 +12,17 @@ public sealed class QuickLocation : ObservableObject
     public required string Path { get; init; }
     public bool IsFavorite { get; init; }
 
-    /// <summary>폴더가 지워졌거나 옮겨져 더는 없다. 즐겨찾기에서 뺄 수 있게 흐리게 보여 준다.</summary>
+    /// <summary>
+    /// 폴더를 지금 확인할 수 없다(USB / 네트워크 드라이브가 연결되어 있지 않음). 폴더가 정말 지워진 즐겨찾기는 자동으로 빠지므로,
+    /// 이 표시는 "다시 연결하면 쓸 수 있는" 경우에만 나타난다. 그래서 지우지 않고 흐리게만 보여 준다.
+    /// </summary>
     public bool IsMissing
     {
         get => _isMissing;
         set { if (Set(ref _isMissing, value)) Raise(nameof(ToolTip)); }
     }
 
-    public string ToolTip => _isMissing ? $"{Path}\n(폴더를 찾을 수 없습니다 — ✕ 로 즐겨찾기에서 뺄 수 있습니다)" : Path;
+    public string ToolTip => _isMissing ? $"{Path}\n(드라이브가 연결되어 있지 않아 지금은 열 수 없습니다)" : Path;
 }
 
 /// <summary>Breadcrumb 조각. 클릭하면 그 폴더로 이동한다.</summary>

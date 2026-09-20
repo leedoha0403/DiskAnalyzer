@@ -479,15 +479,91 @@ public sealed class QuickMoveViewModel : ObservableObject
         _ = CheckLocationsAsync();
     }
 
-    /// <summary>즐겨찾기 폴더가 아직 있는지 백그라운드에서 확인해 없는 것은 흐리게 표시한다(네트워크 경로여도 화면이 멈추지 않게).</summary>
+    // ------------------------------------------------------------------ 없어진 즐겨찾기 정리
+    // 누를 때까지 모르고 있다가 알리면 늦다. 확인은 (1) 이 화면을 열 때, (2) 무언가 지우거나 옮긴 직후, (3) 창으로 돌아올 때 한다.
+    // 폴더가 정말 없으면 그 자리에서 즐겨찾기를 빼 두고, 이 화면이 보일 때 어떤 경로가 빠졌는지 한 번 알린다.
+
+    private readonly List<string> _removedFavorites = new();
+    private bool _pageVisible;
+    private bool _showingRemoved;
+
+    /// <summary>빠른 이동 화면(탭 또는 도크)이 지금 보이는가. 보이게 되는 순간 즐겨찾기를 확인하고 밀린 알림을 띄운다.</summary>
+    public bool IsPageVisible
+    {
+        get => _pageVisible;
+        set
+        {
+            if (_pageVisible == value) return;
+            _pageVisible = value;
+            if (!value) return;
+            _ = CheckLocationsAsync();
+            ShowRemovedFavorites();
+        }
+    }
+
+    /// <summary>
+    /// 즐겨찾기 폴더를 백그라운드에서 확인한다(네트워크 경로여도 화면이 멈추지 않게).
+    /// 드라이브(또는 공유)는 있는데 폴더만 없으면 지워지거나 옮겨진 것이므로 즐겨찾기에서 뺀다.
+    /// 드라이브 자체가 없으면(USB 를 뽑음, 네트워크 끊김) 다시 연결할 수 있으니 지우지 않고 흐리게만 표시한다.
+    /// </summary>
     private async Task CheckLocationsAsync()
     {
-        var favorites = QuickLocations.Where(l => l.IsFavorite).ToList();
-        if (favorites.Count == 0) return;
+        var paths = Settings.Favorites.ToList();
+        if (paths.Count == 0) return;
 
-        var paths = favorites.Select(l => l.Path).ToList();
-        var missing = await Task.Run(() => paths.Where(p => !Directory.Exists(p)).ToHashSet(StringComparer.OrdinalIgnoreCase));
-        foreach (var l in favorites) l.IsMissing = missing.Contains(l.Path);
+        var states = await Task.Run(() => paths.Select(p =>
+        {
+            if (Directory.Exists(p)) return (Path: p, Gone: false, Offline: false);
+            string? root = System.IO.Path.GetPathRoot(p);
+            bool rootOk = !string.IsNullOrEmpty(root) && Directory.Exists(root);
+            return (Path: p, Gone: rootOk, Offline: !rootOk);
+        }).ToList());
+
+        bool removed = false;
+        foreach (var s in states.Where(s => s.Gone))
+        {
+            if (Settings.Favorites.RemoveAll(f => PathUtil.Equal(f, s.Path)) == 0) continue;   // 그 사이 다른 확인이 이미 뺐다
+            _removedFavorites.Add(s.Path);
+            removed = true;
+        }
+
+        if (removed)
+        {
+            SaveSettings();
+            RebuildLocations();   // 안에서 다시 확인하지만 이번에는 뺄 것이 없다
+            Left.RaiseFavoriteChanged();
+            Right.RaiseFavoriteChanged();
+            ShowRemovedFavorites();
+        }
+
+        var offline = states.Where(s => s.Offline).Select(s => s.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var l in QuickLocations.Where(l => l.IsFavorite)) l.IsMissing = offline.Contains(l.Path);
+    }
+
+    /// <summary>
+    /// 빠진 즐겨찾기를 알린다(확인 버튼만). 화면이 보이지 않으면 쌓아 두었다가 보일 때 한 번에 알린다.
+    /// 탭을 바꾸는 중에 곧바로 대화 상자를 열지 않도록 한 박자 늦춘다.
+    /// </summary>
+    private void ShowRemovedFavorites()
+    {
+        if (!_pageVisible || _showingRemoved || _removedFavorites.Count == 0 || Ui == null) return;
+        _showingRemoved = true;
+
+        PostToUi(() =>
+        {
+            try
+            {
+                while (_removedFavorites.Count > 0 && Ui != null)
+                {
+                    var paths = _removedFavorites.ToList();
+                    _removedFavorites.Clear();
+                    Ui.Choose("없어진 즐겨찾기를 목록에서 뺐습니다",
+                        $"즐겨찾기 폴더 {paths.Count:N0}개가 삭제되었거나 옮겨져서 더는 없습니다.\n\n" + Bullets(paths),
+                        0, "확인");
+                }
+            }
+            finally { _showingRemoved = false; }
+        });
     }
 
     /// <summary>화면 스레드에서 실행한다(파일 감시 같은 백그라운드 스레드에서 부를 때).</summary>

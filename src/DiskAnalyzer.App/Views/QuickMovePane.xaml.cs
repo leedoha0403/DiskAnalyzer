@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -303,19 +302,7 @@ public partial class QuickMovePane : UserControl, IShortcutTarget
 
     private void OnChipClick(object sender, RoutedEventArgs e)
     {
-        if (_vm == null || sender is not Button { Tag: string path } button) return;
-
-        // 폴더가 없어진 즐겨찾기: 열 수 없으니 목록에서 지우고, 어떤 경로였는지만 알리고 끝낸다.
-        if (button.DataContext is QuickLocation { IsFavorite: true } loc && (loc.IsMissing || !Directory.Exists(path)))
-        {
-            _vm.ToggleFavorite(path);
-            MessageBox.Show(Window.GetWindow(this),
-                $"즐겨찾기 폴더를 찾을 수 없어 목록에서 삭제했습니다.\n\n{path}",
-                "없어진 즐겨찾기", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        _vm.NavigateTo(path);
+        if (sender is Button { Tag: string path }) _vm?.NavigateTo(path);
     }
 
     private void OnChipRemoveClick(object sender, RoutedEventArgs e)
