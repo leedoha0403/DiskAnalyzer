@@ -566,6 +566,9 @@ public sealed class QuickMoveViewModel : ObservableObject
         });
     }
 
+    /// <summary>즐겨찾기를 지금 확인한다(다른 탭의 즐겨찾기 메뉴를 열 때). 없어진 폴더는 여기서 빠지고, 알림은 이 화면이 보일 때 뜬다.</summary>
+    public void CheckFavorites() => _ = CheckLocationsAsync();
+
     /// <summary>화면 스레드에서 실행한다(파일 감시 같은 백그라운드 스레드에서 부를 때).</summary>
     internal void PostToUi(Action action)
     {

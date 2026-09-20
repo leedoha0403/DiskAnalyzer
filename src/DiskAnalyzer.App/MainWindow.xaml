@@ -16,11 +16,12 @@
         <ctl:TreeRowWidthConverter x:Key="TreeRowWidth" />
 
         <!-- 15. 파일 / 폴더 우클릭 메뉴 -->
-        <ContextMenu x:Key="RowMenu" x:Shared="False">
+        <ContextMenu x:Key="RowMenu" x:Shared="False" Opened="OnRowMenuOpened">
             <MenuItem Header="탐색기에서 열기" Click="OnOpenExplorer" />
             <MenuItem Header="경로 복사" Click="OnCopyPath" />
             <MenuItem Header="파일명 복사" Click="OnCopyName" />
             <MenuItem Header="속성 보기" Click="OnShowProperties" />
+            <MenuItem Tag="fav" Header="즐겨찾기에 추가" Click="OnRowFavorite" />
             <Separator />
             <MenuItem Header="이동 (좌) - 빠른 이동 출발지로 보내기" Click="OnSendLeft"
                       ToolTip="빠른 이동 도크의 출발지(위) 패널에서 이 항목을 선택해 둡니다. 탭을 벗어나지 않습니다" />
@@ -282,14 +283,52 @@
                         </Grid>
                     </Border>
 
-                    <!-- 폴더 / Treemap 이 함께 쓰는 이동 막대 (7. Breadcrumb Navigation) -->
+                    <!-- 폴더 / Treemap 이 함께 쓰는 이동 막대: 뒤로·앞으로·상위·루트 · 경로(빈 곳을 누르면 직접 입력) · 변경 감지 · 이 폴더 새로고침 · 즐겨찾기 -->
                     <Border x:Name="NavBar" DockPanel.Dock="Top" Padding="12,8" Background="{DynamicResource SurfaceAltBrush}"
                             BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,0,0,1">
                         <DockPanel>
                             <ToggleButton DockPanel.Dock="Right" Content="분할 보기" IsChecked="{Binding IsSplitView}"
                                           AutomationProperties.AutomationId="SplitToggle" Margin="12,0,0,0" Padding="10,3"
                                           ToolTip="폴더 목록과 Treemap 을 나란히 표시합니다 (다시 누르면 원래대로)" />
-                            <StackPanel Orientation="Horizontal">
+
+                            <!-- 즐겨찾기: ▾ 목록 / ☆ 지금 폴더 추가·제거. 빠른 이동 탭과 같은 목록이다. -->
+                            <Button DockPanel.Dock="Right" Content="▾" Click="OnFavoritesClick" Padding="6,3" Margin="2,0,0,0"
+                                    AutomationProperties.AutomationId="FavoritesMenu" ToolTip="즐겨찾기 목록 (빠른 이동 탭과 같은 목록)" />
+                            <Button DockPanel.Dock="Right" Command="{Binding PathBar.ToggleFavoriteCommand}" Padding="8,3" Margin="12,0,0,0"
+                                    AutomationProperties.AutomationId="FavoriteToggle"
+                                    km:ShortcutHint.Command="Navigation.ToggleFavorite" km:ShortcutHint.Text="지금 폴더를 즐겨찾기에 추가 / 제거">
+                                <TextBlock FontSize="14">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="☆" />
+                                            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding PathBar.IsCurrentFavorite}" Value="True">
+                                                    <Setter Property="Text" Value="★" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Button>
+
+                            <!-- 이 폴더만 실제 상태로 새로고침(드라이브 전체 재스캔이 아니다) -->
+                            <Button DockPanel.Dock="Right" Content="⟳ 이 폴더" Command="{Binding RefreshFolderCommand}" Padding="10,3" Margin="12,0,0,0"
+                                    AutomationProperties.AutomationId="RefreshFolder" ToolTip="{Binding FolderRefreshToolTip}" />
+
+                            <!-- 열린 폴더가 마지막 스캔 이후 바뀌었을 때만 보인다. 누르거나 F5. -->
+                            <Button DockPanel.Dock="Right" Content="{Binding FolderChangeText}" Command="{Binding RefreshFolderCommand}"
+                                    Style="{StaticResource LinkButton}" Foreground="{DynamicResource WarningBrush}" FontWeight="SemiBold"
+                                    Margin="12,0,0,0" AutomationProperties.AutomationId="FolderChangeChip"
+                                    ToolTip="이 폴더가 마지막 스캔 이후 바뀌었습니다. 눌러서 이 폴더만 새로고침합니다."
+                                    Visibility="{Binding HasFolderChanges, Converter={StaticResource BoolToVis}}" />
+
+                            <Button DockPanel.Dock="Right" Content="✎" Command="{Binding PathBar.BeginEditCommand}" Style="{StaticResource LinkButton}"
+                                    Margin="12,0,0,0" Width="28" AutomationProperties.AutomationId="EditPath"
+                                    km:ShortcutHint.Command="Navigation.FocusPath" km:ShortcutHint.Text="경로 직접 입력 (빈 곳을 눌러도 됩니다)" />
+
+                            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
                                 <Button Content="◀" Command="{Binding BackCommand}" Style="{StaticResource LinkButton}"
                                         km:ShortcutHint.Command="Navigation.GoBack" km:ShortcutHint.Text="뒤로" Width="30" />
                                 <Button Content="▶" Command="{Binding ForwardCommand}" Style="{StaticResource LinkButton}"
@@ -300,34 +339,160 @@
                                         km:ShortcutHint.Command="Navigation.GoRoot" km:ShortcutHint.Text="스캔 루트로 이동"
                                         Margin="0,0,10,0" />
                                 <Border Width="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,2,10,2" />
-                                <ItemsControl ItemsSource="{Binding Breadcrumb}" VerticalAlignment="Center">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <StackPanel Orientation="Horizontal" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Orientation="Horizontal">
-                                                <Button Content="{Binding Name}" Tag="{Binding Id}"
-                                                        Click="OnBreadcrumbClick" Style="{StaticResource LinkButton}" />
-                                                <TextBlock Text="›" Foreground="{DynamicResource TextDimBrush}"
-                                                           VerticalAlignment="Center" Margin="2,0">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsLast}" Value="True">
-                                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
                             </StackPanel>
+
+                            <!-- 경로: 평소에는 조각 버튼(클릭하면 그 폴더로), 빈 곳 클릭 / Ctrl+L / ✎ 로 전체 경로 입력 칸으로 바뀐다. -->
+                            <Grid x:Name="PathHost" Background="Transparent" MouseLeftButtonDown="OnPathAreaMouseDown">
+                                <ScrollViewer x:Name="CrumbScroller" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
+                                              VerticalAlignment="Center">
+                                    <ScrollViewer.Style>
+                                        <Style TargetType="ScrollViewer">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding PathBar.IsEditing}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ScrollViewer.Style>
+                                    <ItemsControl ItemsSource="{Binding Breadcrumb}" VerticalAlignment="Center">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Button Content="{Binding Name}" Tag="{Binding Id}"
+                                                            Click="OnBreadcrumbClick" Style="{StaticResource LinkButton}" />
+                                                    <TextBlock Text="›" Foreground="{DynamicResource TextDimBrush}"
+                                                               VerticalAlignment="Center" Margin="2,0">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsLast}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+
+                                <TextBox x:Name="PathEdit" Text="{Binding PathBar.Text, UpdateSourceTrigger=PropertyChanged}"
+                                         Padding="8,3" FontSize="12.5" VerticalContentAlignment="Center"
+                                         AutomationProperties.AutomationId="PathEdit"
+                                         PreviewKeyDown="OnPathEditKeyDown" LostKeyboardFocus="OnPathEditLostFocus">
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding PathBar.IsEditing}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
+
+                                <!-- 입력 중인 경로 아래의 폴더 제안(스캔 결과에서). 키보드 포커스는 입력 칸에 둔 채 ↑↓ / Tab 으로 고른다. -->
+                                <Popup PlacementTarget="{Binding ElementName=PathHost}" Placement="Bottom"
+                                       IsOpen="{Binding PathBar.HasSuggestions, Mode=OneWay}" StaysOpen="True"
+                                       AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                                    <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrushStrong}"
+                                            BorderThickness="1" CornerRadius="6" Padding="3" Margin="0,3,0,0"
+                                            MinWidth="{Binding ActualWidth, ElementName=PathHost}">
+                                        <StackPanel>
+                                            <ListBox ItemsSource="{Binding PathBar.Suggestions}" SelectedIndex="{Binding PathBar.SuggestionIndex, Mode=OneWay}"
+                                                     Background="Transparent" BorderThickness="0" Focusable="False" MaxHeight="264"
+                                                     PreviewMouseLeftButtonUp="OnPathSuggestionClick"
+                                                     AutomationProperties.AutomationId="PathBarSuggestions">
+                                                <ListBox.ItemContainerStyle>
+                                                    <Style TargetType="ListBoxItem">
+                                                        <Setter Property="Focusable" Value="False" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                                        <Setter Property="AutomationProperties.Name" Value="{Binding}" />
+                                                        <Setter Property="Template">
+                                                            <Setter.Value>
+                                                                <ControlTemplate TargetType="ListBoxItem">
+                                                                    <Border x:Name="Bd" CornerRadius="4" Padding="9,5" Background="Transparent">
+                                                                        <ContentPresenter />
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+                                                                        </Trigger>
+                                                                        <Trigger Property="IsSelected" Value="True">
+                                                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectionBrush}" />
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Style>
+                                                </ListBox.ItemContainerStyle>
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Border Width="9" Height="9" CornerRadius="2" Margin="0,0,9,0" VerticalAlignment="Center"
+                                                                    Background="{DynamicResource FolderIconBrush}" />
+                                                            <TextBlock Text="{Binding}" FontSize="12.5" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+                                            <TextBlock Text="Tab 자동완성 · ↑↓ 고르기 · Enter 이동 · Esc 취소" Style="{StaticResource Caption}"
+                                                       Margin="9,4,9,2" />
+                                        </StackPanel>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- 경로 입력 결과 안내(없는 경로 / 스캔 범위 밖). 범위 밖이면 "이 경로 스캔" 을 바로 제안한다. -->
+                    <Border x:Name="PathNotice" DockPanel.Dock="Top" Padding="12,6" Background="{DynamicResource SurfaceAltBrush}"
+                            BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,0,0,1">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding PathBar.HasNotice}" Value="True" />
+                                            <Condition Binding="{Binding Visibility, ElementName=NavBar}" Value="Visible" />
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="✕" Command="{Binding PathBar.DismissNoticeCommand}"
+                                    Style="{StaticResource LinkButton}" Margin="8,0,0,0" ToolTip="닫기" />
+                            <Button DockPanel.Dock="Right" Content="빠른 이동에서 열기" Command="{Binding PathBar.OpenOfferedInQuickMoveCommand}"
+                                    Margin="8,0,0,0" Padding="10,3" AutomationProperties.AutomationId="OfferOpenInQuickMove"
+                                    Visibility="{Binding PathBar.HasOffer, Converter={StaticResource BoolToVis}}" />
+                            <Button DockPanel.Dock="Right" Content="{Binding PathBar.OfferText}" Command="{Binding PathBar.ScanOfferedCommand}"
+                                    Style="{StaticResource AccentButton}" Margin="8,0,0,0" Padding="10,3"
+                                    AutomationProperties.AutomationId="OfferScan"
+                                    Visibility="{Binding PathBar.HasOffer, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock Text="{Binding PathBar.Notice}" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="12">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding PathBar.NoticeIsWarning}" Value="True">
+                                                <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </DockPanel>
                     </Border>
 
@@ -452,6 +617,7 @@
                                         <ContextMenu Opened="OnTreemapMenuOpened">
                                             <MenuItem x:Name="TmOpenExplorer" Header="탐색기에서 열기" Click="OnTreemapOpenExplorer" />
                                             <MenuItem x:Name="TmCopyPath" Header="경로 복사" Click="OnTreemapCopyPath" />
+                                            <MenuItem x:Name="TmFavorite" Header="즐겨찾기에 추가" Click="OnTreemapFavorite" />
                                             <Separator x:Name="TmSeparator" />
                                             <MenuItem x:Name="TmSendLeft" Header="이동 (좌) - 빠른 이동 출발지로 보내기" Click="OnTreemapSendLeft" />
                                             <MenuItem x:Name="TmSendRight" Header="이동 (우) - 빠른 이동 목적지로 열기" Click="OnTreemapSendRight" />

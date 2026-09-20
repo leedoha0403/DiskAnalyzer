@@ -20,12 +20,14 @@ public static class CommandIds
     public const string GoForward = "Navigation.GoForward";
     public const string FocusPath = "Navigation.FocusPath";
     public const string GoRoot = "Navigation.GoRoot";
+    public const string ToggleFavorite = "Navigation.ToggleFavorite";
 
     public const string SearchFocus = "Search.Focus";
     public const string SearchCancel = "Search.Cancel";
 
     public const string Refresh = "View.Refresh";
     public const string ForceRescan = "View.ForceRescan";
+    public const string RefreshFolderDeep = "View.RefreshFolderDeep";
 
     public const string SelectAll = "Selection.SelectAll";
     public const string Open = "Selection.Open";
@@ -77,12 +79,14 @@ public static class CommandCatalog
         new(CommandIds.GoForward, Nav, "다음 위치", Alt("Right")),
         new(CommandIds.FocusPath, Nav, "경로 입력", Ctrl("L")),
         new(CommandIds.GoRoot, Nav, "스캔 루트", Ctrl("Home")),
+        new(CommandIds.ToggleFavorite, Nav, "즐겨찾기 추가 / 제거", Ctrl("D")),
 
         new(CommandIds.SearchFocus, Search, "검색", Ctrl("F")),
         new(CommandIds.SearchCancel, Search, "검색 / 선택 취소", Bare("Esc")),
 
-        new(CommandIds.Refresh, Refresh, "현재 화면 갱신", Bare("F5")),
-        new(CommandIds.ForceRescan, Refresh, "강제 재스캔", Ctrl("F5")),
+        new(CommandIds.Refresh, Refresh, "현재 화면 갱신 (폴더 · Treemap: 이 폴더 새로고침)", Bare("F5")),
+        new(CommandIds.RefreshFolderDeep, Refresh, "이 폴더 하위까지 다시 스캔", new("F5", Shift: true)),
+        new(CommandIds.ForceRescan, Refresh, "강제 재스캔 (드라이브 전체)", Ctrl("F5")),
 
         new(CommandIds.SelectAll, Select, "전체 선택", Ctrl("A")),
         new(CommandIds.Open, Select, "열기 / 폴더 진입", Bare("Enter")),

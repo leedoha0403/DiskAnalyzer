@@ -65,6 +65,14 @@ public partial class MainWindow
                 return onNavTab && Run(_vm.ForwardCommand);
             case CommandIds.GoRoot:
                 return onNavTab && Run(_vm.RootCommand);
+            case CommandIds.FocusPath:
+                if (!onNavTab) return false;
+                _vm.PathBar.BeginEdit();
+                return _vm.PathBar.IsEditing;
+            case CommandIds.ToggleFavorite:
+                return onNavTab && Run(_vm.PathBar.ToggleFavoriteCommand);
+            case CommandIds.RefreshFolderDeep:
+                return onNavTab && Run(_vm.RefreshFolderDeepCommand);
 
             case CommandIds.SearchFocus:
                 if (FilterBar.Visibility != Visibility.Visible) return false;
@@ -117,6 +125,9 @@ public partial class MainWindow
                 return Run(_vm.Cleanup.RefreshCommand);
             case LiveTab.QuickMove:
                 return false;   // 빠른 이동의 활성 패널 새로고침은 QuickMoveView 가 먼저 처리한다.
+            case LiveTab.Folder:
+            case LiveTab.Treemap:
+                return Run(_vm.RefreshFolderCommand);   // 지금 폴더만 실제 상태로 맞춘다(드라이브 전체 재스캔은 강제 재스캔)
             default:
                 return Run(_vm.ApplyFilterCommand);
         }

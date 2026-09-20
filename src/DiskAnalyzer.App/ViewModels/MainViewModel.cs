@@ -18,7 +18,7 @@ namespace DiskAnalyzer.App.ViewModels;
 /// 스캔 엔진이 UI 로 이벤트를 밀어 넣으면 파일이 많을수록 Dispatcher 큐가 넘치고 UI 가 멈춘다.
 /// 엔진은 최신 스냅샷만 게시하고 UI 가 자기 속도로 읽어가면 UI 는 절대 밀리지 않는다.
 /// </summary>
-public sealed class MainViewModel : ObservableObject
+public sealed partial class MainViewModel : ObservableObject
 {
     private readonly ScanController _controller = new();
     private readonly DispatcherTimer _timer;
@@ -142,6 +142,8 @@ public sealed class MainViewModel : ObservableObject
             RefreshCommand.RaiseCanExecuteChanged();
             CancelCommand.RaiseCanExecuteChanged();
             RefreshLargeFilesCommand.RaiseCanExecuteChanged();
+            RefreshFolderCommand.RaiseCanExecuteChanged();
+            RefreshFolderDeepCommand.RaiseCanExecuteChanged();
         }
     }
     public bool IsIdle => !_isScanning;
@@ -510,6 +512,7 @@ public sealed class MainViewModel : ObservableObject
         _forward.Clear();
         ClearSearchState();
         _current = null;
+        ResetFolderChange();
         Rows = Array.Empty<EntryRow>();
         TopFiles = Array.Empty<EntryRow>();
         Extensions = Array.Empty<ExtensionRow>();
@@ -636,6 +639,10 @@ public sealed class MainViewModel : ObservableObject
     {
         if (_current == null && !IsScanning) return;
 
+        // 뒤로 / 앞으로로 돌아왔는데 그 폴더가 그 사이 새로고침에서 없어졌다면 가장 가까운 폴더로.
+        if (_current?.Store is { } live && !IsScanning && live.IsDirectoryDeleted(dirId))
+            dirId = live.NearestLiveDirectory(dirId);
+
         if (pushHistory && dirId != _currentDirId)
         {
             _back.Push(_currentDirId);
@@ -650,6 +657,7 @@ public sealed class MainViewModel : ObservableObject
         BackCommand.RaiseCanExecuteChanged();
         ForwardCommand.RaiseCanExecuteChanged();
         UpCommand.RaiseCanExecuteChanged();
+        OnFolderOpened();
     }
 
     public void NavigateToPath(string fullPath)

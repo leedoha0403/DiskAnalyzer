@@ -72,6 +72,8 @@ public partial class MainWindow : Window
         // 탐색기 등 다른 프로그램에서 파일을 바꾸고 돌아오면 두 패널을 실제 상태로 맞춘다(감시가 못 잡은 경우의 안전망).
         Activated += (_, _) => _vm.QuickMove.RefreshPanes(clearMeasureCache: false);
 
+        InitializePathBar();   // 경로 직접 입력 · 즐겨찾기 · 변경 감지 (MainWindow.PathBar.cs)
+
         SourceInitialized += (_, _) => ApplyDarkTitleBar();
         InstallShortcuts();
         Loaded += (_, _) => ApplyLayout();   // 저장된 도크 표시 상태를 처음부터 반영
@@ -595,6 +597,7 @@ public partial class MainWindow : Window
         TmCopyPath.Visibility = visibility;
         TmSeparator.Visibility = visibility;
         TmSendQueue.Visibility = visibility;
+        UpdateTreemapFavoriteItem();
     }
 
     private void OnTreemapOpenExplorer(object sender, RoutedEventArgs e)
@@ -795,7 +798,9 @@ public partial class MainWindow : Window
     private void ShowDeleteReview(IEnumerable<DeleteReviewRow> rows)
     {
         var window = new DeleteReviewWindow(rows) { Owner = this };
-        window.ShowDialog();
+        _vm.SuspendFolderWatch();   // 지우는 동안 폴더 핸들을 잡고 있지 않게
+        try { window.ShowDialog(); }
+        finally { _vm.ResumeFolderWatch(); }
 
         var summary = window.Summary;
         if (summary == null)

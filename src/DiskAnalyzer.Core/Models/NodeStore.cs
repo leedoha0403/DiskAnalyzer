@@ -22,7 +22,7 @@ namespace DiskAnalyzer.Core.Models;
 ///   쓰기는 Aggregator 단일 스레드만 수행한다. 따라서 이 클래스에는 Lock 이 하나도 없다(23).
 ///   스캔 중 UI 조회는 Aggregator 스레드에서 스냅샷을 만들어 전달한다.
 /// </summary>
-public sealed class NodeStore
+public sealed partial class NodeStore
 {
     public const int RootId = 0;
     private const int InitialDirCapacity = 1 << 14;
