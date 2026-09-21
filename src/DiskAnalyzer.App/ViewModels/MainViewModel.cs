@@ -163,7 +163,11 @@ public sealed partial class MainViewModel : ObservableObject
     public string SearchText { get => _searchText; set => Set(ref _searchText, value); }
 
     private bool _isSearchMode;
-    public bool IsSearchMode { get => _isSearchMode; private set => Set(ref _isSearchMode, value); }
+    public bool IsSearchMode
+    {
+        get => _isSearchMode;
+        private set { if (Set(ref _isSearchMode, value)) Raise(nameof(ShowSearchTree)); }
+    }
 
     /// <summary>검색을 실행한 시점의 검색어. 필터/삭제로 결과를 다시 만들 때는 입력창이 아니라 이 값을 쓴다.</summary>
     private string _activeSearchTerm = string.Empty;
@@ -859,6 +863,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         IsSearchMode = true;
         Rows = outcome.Rows;
+        BuildSearchTree();
         CurrentPath = scoped
             ? $"검색: \"{_activeSearchTerm}\"  ·  {store.GetDirectoryPath(_currentDirId)} 하위"
             : $"검색: \"{_activeSearchTerm}\"";
@@ -880,6 +885,86 @@ public sealed partial class MainViewModel : ObservableObject
     {
         IsSearchMode = false;
         _activeSearchTerm = string.Empty;
+        SetSearchTree(SearchFoldTree.Empty);
+    }
+
+    // -------------------------------------------- 49. 검색 결과 경로별 접기
+
+    private bool _useSearchTree;
+
+    /// <summary>검색 결과를 평면 목록 대신 폴더 트리 + 이름 접기로 본다. 검색 중에만 뜻이 있다.</summary>
+    public bool UseSearchTree
+    {
+        get => _useSearchTree;
+        set
+        {
+            if (!Set(ref _useSearchTree, value)) return;
+            Raise(nameof(ShowSearchTree));
+            if (IsSearchMode) BuildSearchTree();
+        }
+    }
+
+    /// <summary>화면이 목록 대신 트리를 보여 줄 때. 검색 중이 아니면 언제나 목록이다.</summary>
+    public bool ShowSearchTree => IsSearchMode && _useSearchTree;
+
+    private IReadOnlyList<SearchNode> _searchTree = Array.Empty<SearchNode>();
+    public IReadOnlyList<SearchNode> SearchTree { get => _searchTree; private set => Set(ref _searchTree, value); }
+
+    private string _searchFoldSummary = string.Empty;
+
+    /// <summary>"12묶음으로 340건을 접었습니다" 처럼, 접기가 무엇을 했는지 알려 준다.</summary>
+    public string SearchFoldSummary { get => _searchFoldSummary; private set => Set(ref _searchFoldSummary, value); }
+
+    public bool HasSearchFoldSummary => _searchFoldSummary.Length > 0;
+
+    private void BuildSearchTree()
+    {
+        if (!_useSearchTree) { SetSearchTree(SearchFoldTree.Empty); return; }
+        SetSearchTree(SearchFolder.Build(Rows));
+    }
+
+    private void SetSearchTree(SearchFoldTree tree)
+    {
+        SearchTree = tree.Roots;
+        SearchFoldSummary = tree.PatternCount == 0
+            ? string.Empty
+            : $"{tree.PatternCount:N0}개 묶음으로 {tree.FoldedItemCount:N0}건을 접었습니다";
+        Raise(nameof(HasSearchFoldSummary));
+    }
+
+    // -------------------------------------------- 49. 검색 결과 -> 그 항목이 있는 폴더로
+
+    /// <summary>검색 결과에서 폴더로 이동했을 때. 화면은 폴더 목록이 보이도록 탭을 맞춘다.</summary>
+    public event EventHandler? FolderRevealed;
+
+    /// <summary>
+    /// 이 항목이 있는 폴더를 연다. 폴더면 그 폴더로, 파일이면 그 파일이 든 폴더로 가서 파일을 선택한다.
+    /// 폴더 위치는 Treemap 과 공유하므로 두 탭이 같은 곳을 보게 된다.
+    /// </summary>
+    public void RevealRow(EntryRow? row)
+    {
+        var store = _current?.Store;
+        if (row == null || store == null) return;
+
+        if (row.IsDirectory)
+        {
+            Navigate(row.Id);
+        }
+        else
+        {
+            int parent = store.GetFileParent(row.Id);
+            if (parent < 0)
+            {
+                StatusMessage = $"{row.Name} 이(가) 있던 폴더를 찾지 못했습니다. 새로고침 후 다시 시도하세요.";
+                return;
+            }
+
+            Navigate(parent);
+            RequestSelectFile(row.Id);
+        }
+
+        FolderRevealed?.Invoke(this, EventArgs.Empty);
+        StatusMessage = $"{row.Name} 위치로 이동했습니다.";
     }
 
     // ---------------------------------------------------------------- 알림

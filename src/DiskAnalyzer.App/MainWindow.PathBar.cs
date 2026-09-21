@@ -176,8 +176,15 @@ public partial class MainWindow
     {
         if (sender is not ContextMenu menu) return;
 
-        var rows = (menu.PlacementTarget as ListView)?.SelectedItems.OfType<EntryRow>().ToList();
+        var list = menu.PlacementTarget as ListView;
+        var rows = list?.SelectedItems.OfType<EntryRow>().ToList();
         var folder = rows is { Count: 1 } && rows[0].IsDirectory ? rows[0] : null;
+
+        // 49. "이 항목이 있는 폴더 열기"는 지금 보고 있는 목록이 그 폴더가 아닐 때만 뜻이 있다 —
+        //     검색 결과이거나, 폴더 목록이 아닌 탭(큰 파일)에서 찾은 경우다.
+        bool elsewhere = _vm.IsSearchMode || !ReferenceEquals(list, FolderList);
+        foreach (var item in menu.Items.OfType<MenuItem>().Where(i => i.Tag is "reveal"))
+            item.Visibility = elsewhere && rows is { Count: 1 } ? Visibility.Visible : Visibility.Collapsed;
 
         foreach (var item in menu.Items.OfType<MenuItem>().Where(i => i.Tag is "fav"))
         {

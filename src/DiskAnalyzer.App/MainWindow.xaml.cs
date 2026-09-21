@@ -49,6 +49,7 @@ public partial class MainWindow : Window
 
         // [검색] 버튼과 Enter 가 같은 경로를 타도록 탭 전환은 여기서 한다. 결과는 폴더 목록에 나온다.
         _vm.SearchStarted += (_, _) => EnsureFolderListVisible();
+        _vm.FolderRevealed += (_, _) => EnsureFolderListVisible();
 
         Treemap.HoverChanged += OnTreemapHover;
         Treemap.ItemActivated += OnTreemapActivated;
@@ -453,6 +454,13 @@ public partial class MainWindow : Window
     private void OnRowDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (sender is not ListView list || list.SelectedItem is not EntryRow row) return;
+
+        // 49. 검색 결과에서는 "그 파일이 어디 있는지"가 궁금해서 누른다. 탐색기 대신 그 폴더로 데려간다.
+        if (_vm.IsSearchMode)
+        {
+            _vm.RevealRow(row);
+            return;
+        }
 
         if (row.IsDirectory)
         {
