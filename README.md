@@ -226,7 +226,8 @@ DiskAnalyzer/
     DiskAnalyzer.Core/               스캔 엔진 (UI 참조 없음)
       Models/    NodeStore, StringPool, TopKHeap, ExtensionTable,
                  Categorizer, SizeFormatter, Rows, ScanOptions/Progress/Enums,
-                 Protection, NodeMutations, CleanupModels, CleanupGrouping
+                 Protection, NodeMutations, CleanupModels, CleanupGrouping,
+                 ExclusionRules, ExclusionSettings
       Scanning/  ScanController, CompatibilityScanner, FastScanner,
                  ScanBatch, ScanRuntime, ScanResult, Ntfs/MftReader
       Analysis/  ProtectionEvaluator, CleanupScorer,
@@ -243,7 +244,7 @@ DiskAnalyzer/
       App.xaml(.cs), app.manifest
     DiskAnalyzer.Bench/              벤치마크 러너
   tests/
-    DiskAnalyzer.Tests/              xunit (184 tests)
+    DiskAnalyzer.Tests/              xunit (370 tests)
 ```
 
 ## 10. 보호 등급 — "삭제해도 되는가"
@@ -501,6 +502,7 @@ dist/DiskAnalyzer.exe "C:\Users" --tab 4
 dist/DiskAnalyzer.Bench.exe C:\                      # 전체 드라이브
 dist/DiskAnalyzer.Bench.exe C:\Users --sweep         # 워커 수 스윕
 dist/DiskAnalyzer.Bench.exe C:\ --mode fast          # NTFS Fast Scan (관리자 권한 필요)
+dist/DiskAnalyzer.Bench.exe C:\Users --exclude ".git" --exclude "*.iso"   # 제외 규칙 적용
 dist/DiskAnalyzer.Bench.exe --gen D:\bench 1000000   # 합성 트리 생성
 ```
 
@@ -510,14 +512,41 @@ dist/DiskAnalyzer.Bench.exe --gen D:\bench 1000000   # 합성 트리 생성
 ## 14. 설정
 
 Scan Mode(Auto/Fast/Compatibility) · Worker Count(Auto/수동) · Follow Symbolic Links ·
-Show Hidden/System Files · UI Theme(Dark/Light/시스템) · Size Unit(Auto/KB/MB/GB/TB) · Cache Results
+Show Hidden/System Files · UI Theme(Dark/Light/시스템) · Size Unit(Auto/KB/MB/GB/TB) · Cache Results ·
+**스캔 제외 규칙**(아래 14.1)
+
+### 14.1 스캔 제외 — 안 읽을 것을 정한다
+
+설정 패널에 한 줄에 하나씩 적고 **[제외 규칙 적용]** 을 누른다. 다음 스캔부터 적용되며
+`%LocalAppData%\DiskAnalyzer\exclusions.json` 에 저장된다(`Core/Models/ExclusionRules.cs`, `ExclusionSettings.cs`).
+
+| 쓰는 법 | 예 | 대상 |
+|---|---|---|
+| 확장자 | `*.tmp` `*.iso` | **파일**만. 마지막 확장자만 본다(`a.tmp.txt` 는 안 걸린다) |
+| 이름 | `node_modules` `~$*` `log?.txt` | **파일 · 폴더**, 깊이 무관. `*` `?` 와일드카드 |
+| 점으로 시작 | `.git` `.vs` | 그 **이름의 폴더** + 그 **확장자의 파일** 둘 다 |
+| 경로 | `C:\Windows\Temp` `obj\Debug` `C:\Users\*\AppData` | **폴더**만. 해당 폴더와 하위 전체를 읽지 않는다 |
+| 주석 | `# 메모` | 빈 줄과 함께 무시된다 |
+
+모든 비교는 대소문자를 구분하지 않고, `/` 는 `\` 로 바꿔 읽는다.
+
+**경로 규칙을 폴더에만 적용하는 이유**: 파일마다 전체 경로 문자열을 만들면 그것만으로 수십 초가 날아간다
+(10절의 보호 판정이 2단 구조를 쓰는 것과 같은 이유). 파일은 확장자 · 이름 규칙으로 거른다.
+
+**경로 규칙도 2단으로 돌린다**: 폴더 이름이 규칙의 **마지막 세그먼트와 맞을 때만** 전체 경로를 만들어 정밀 판정한다.
+폴더 200만 개에서 경로 문자열을 만들지 않기 위함이며, Fast Scan 은 MFT 부모 체인을 거슬러 같은 판정을 한다.
+
+제외된 것은 **조용히 빠지지 않는다** — 완료 메시지에 `제외 규칙 적용: 폴더 N · 파일 M` 으로 표시한다.
+**폴더 변경 감지와 F5 새로고침도 같은 규칙을 쓴다**(`FolderScanner.List`) — 그렇지 않으면 제외한 항목이 매번 "변경 감지"로 다시 뜨게 된다.
+
+캐시는 제외를 적용한 결과 그대로 저장된다 — 규칙을 바꾸면 다시 스캔해야 한다.
 
 ## 15. 확장을 열어 둔 부분
 
 - **USN Journal 기반 Incremental Scan**: `ScanController` 가 스캐너 구현을 갈아 끼우는 구조라
   `IncrementalScanner` 를 추가하고 `NodeStore` 에 델타를 적용하면 된다.
 - 이전 스캔과 비교 / Scan History: 캐시 포맷(`CacheService`, 버전 필드 포함)에 스냅샷이 이미 남는다.
-- 경로·확장자 제외, Scheduled Scan, 중복 파일 해시 비교 등.
+- Scheduled Scan, 중복 파일 해시 비교 등.
 
 ## 16. 알려진 제약
 

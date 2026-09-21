@@ -21,6 +21,23 @@ public sealed class ScanOptions
     /// <summary>워커가 Aggregator 로 배치를 넘기는 단위. 너무 작으면 채널 오버헤드, 너무 크면 UI 지연.</summary>
     public int BatchSize { get; set; } = 4096;
 
+    private IReadOnlyList<string> _exclusionPatterns = Array.Empty<string>();
+    private ExclusionRules? _exclusions;
+
+    /// <summary>48. 스캔에서 뺄 패턴(한 줄에 하나). 문법은 <see cref="ExclusionRules"/> 참고.</summary>
+    public IReadOnlyList<string> ExclusionPatterns
+    {
+        get => _exclusionPatterns;
+        set
+        {
+            _exclusionPatterns = value ?? Array.Empty<string>();
+            _exclusions = null;      // 다음에 물어볼 때 다시 컴파일한다
+        }
+    }
+
+    /// <summary>컴파일된 제외 규칙. 스캐너는 이것만 본다.</summary>
+    public ExclusionRules Exclusions => _exclusions ??= ExclusionRules.Parse(_exclusionPatterns);
+
     public ScanOptions Clone() => (ScanOptions)MemberwiseClone();
 
     /// <summary>

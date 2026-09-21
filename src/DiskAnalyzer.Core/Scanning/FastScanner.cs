@@ -1,3 +1,4 @@
+using System.Text;
 using DiskAnalyzer.Core.Models;
 using DiskAnalyzer.Core.Scanning.Ntfs;
 using DiskAnalyzer.Core.Services;
@@ -102,6 +103,10 @@ internal sealed class FastScanner
             if ((uint)p < (uint)n && p != i) entries[cursor[p]++] = i;
         }
 
+        var exclude = _rt.Options.Exclusions;
+        bool filtering = !exclude.IsEmpty;
+        bool pathRules = exclude.HasPathRules;
+
         var batch = _rt.Pool.Rent();
         int nextNodeId = 1;
 
@@ -134,6 +139,25 @@ internal sealed class FastScanner
 
                 var name = table.Pool.Get(table.NameHandle[child]);
                 if (name.Length == 0) continue;
+
+                // 48. 제외 규칙. 폴더는 BFS 큐에 넣지 않으므로 하위 전체가 그대로 빠진다.
+                if (filtering)
+                {
+                    if (table.IsDirectory(child))
+                    {
+                        if (exclude.ExcludesDirectoryName(name)
+                            || (pathRules && exclude.MayEndPathRule(name) && exclude.ExcludesPath(BuildPath(table, child))))
+                        {
+                            _rt.Stats.ExcludedFolders++;
+                            continue;
+                        }
+                    }
+                    else if (exclude.ExcludesFile(name))
+                    {
+                        _rt.Stats.ExcludedFiles++;
+                        continue;
+                    }
+                }
 
                 if (table.IsDirectory(child))
                 {
@@ -172,5 +196,33 @@ internal sealed class FastScanner
         else _rt.Pool.Return(batch);
 
         _rt.Stats.WorkerCount = 1;
+    }
+
+    /// <summary>
+    /// MFT 부모 체인을 거슬러 전체 경로를 만든다. 경로 규칙의 끝 세그먼트와 이름이 맞은 폴더에만 쓰므로
+    /// BFS 전체 비용에는 영향을 주지 않는다(폴더마다 경로를 들고 다니면 수백만 개의 문자열이 생긴다).
+    /// </summary>
+    private string BuildPath(MftRecordTable table, int mft)
+    {
+        var parts = new List<string>(8);
+        int cur = mft;
+        for (int guard = 0; cur != RootMftIndex && guard < 512; guard++)
+        {
+            var name = table.Pool.Get(table.NameHandle[cur]);
+            if (name.Length == 0) break;
+            parts.Add(new string(name));
+
+            int p = table.ParentIndex[cur];
+            if ((uint)p >= (uint)table.Count || p == cur) break;
+            cur = p;
+        }
+
+        var sb = new StringBuilder(_rt.RootPath.TrimEnd('\\'));
+        for (int i = parts.Count - 1; i >= 0; i--)
+        {
+            sb.Append('\\');
+            sb.Append(parts[i]);
+        }
+        return sb.ToString();
     }
 }

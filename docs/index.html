@@ -84,6 +84,7 @@
   <a href="#quickstart">빠른 시작</a>
   <a href="#usage">화면 사용법</a>
   <a class="l2" href="#scan">스캔</a>
+  <a class="l2" href="#exclude">스캔 제외 규칙</a>
   <a class="l2" href="#tabs">탭 한눈에 보기</a>
   <a class="l2" href="#linkage">폴더 ↔ Treemap 연동</a>
   <a class="l2" href="#search">검색</a>
@@ -148,6 +149,25 @@
     <li>접근 거부 폴더는 건너뛰고 스캔은 계속됩니다.</li>
   </ul>
 
+  <h3 id="exclude">스캔 제외 규칙</h3>
+  <p><b>설정 → 스캔 제외</b> 칸에 한 줄에 하나씩 적고 <b>[제외 규칙 적용]</b> 을 누릅니다.
+  다음 스캔부터 적용되고 설정은 저장되어 다음에 프로그램을 열 때도 유지됩니다.</p>
+  <table>
+    <tr><th>쓰는 법</th><th>예</th><th>무엇이 빠지나</th></tr>
+    <tr><td>확장자</td><td><code>*.tmp</code> <code>*.iso</code></td><td><b>파일</b>만. 마지막 확장자만 봅니다(<code>a.tmp.txt</code> 는 안 걸립니다)</td></tr>
+    <tr><td>이름</td><td><code>node_modules</code> <code>~$*</code> <code>log?.txt</code></td><td><b>파일·폴더</b>, 깊이 무관. <code>*</code> <code>?</code> 와일드카드를 씁니다</td></tr>
+    <tr><td>점으로 시작</td><td><code>.git</code> <code>.vs</code></td><td>그 <b>이름의 폴더</b>와 그 <b>확장자의 파일</b> 둘 다</td></tr>
+    <tr><td>경로</td><td><code>C:\Windows\Temp</code> <code>obj\Debug</code></td><td><b>폴더</b>만. 그 폴더와 하위 전체를 아예 읽지 않습니다</td></tr>
+    <tr><td>주석</td><td><code># 메모</code></td><td>빈 줄과 함께 무시됩니다</td></tr>
+  </table>
+  <p>대소문자는 구분하지 않습니다. 제외한 것이 있으면 스캔이 끝날 때 <code>제외 규칙 적용: 폴더 N · 파일 M</code> 으로 알려 주므로
+  용량이 왜 덜 나오는지 헷갈리지 않습니다. 폴더 변경 감지와 F5 새로고침도 같은 규칙을 씁니다.</p>
+  <div class="callout warn">
+    <p>경로 규칙은 <b>폴더에만</b> 적용됩니다. 파일마다 전체 경로 문자열을 만들면 그것만으로 스캔이 수십 초 느려지기 때문입니다
+    (같은 이유로 보호 등급 판정도 2단 구조를 씁니다). 특정 파일을 빼려면 확장자나 이름 규칙을 쓰세요.</p>
+    <p>캐시에는 제외를 적용한 결과가 저장됩니다. 규칙을 바꾸면 다시 스캔해야 반영됩니다.</p>
+  </div>
+
   <h3 id="tabs">탭 한눈에 보기</h3>
   <table>
     <tr><th>탭</th><th>무엇을 보여 주나</th><th>주요 기능</th></tr>
@@ -156,6 +176,7 @@
     <tr><td><b>큰 파일</b></td><td>가장 큰 파일 Top 50 / 100 / 500 / 1000</td><td>다중 삭제, 새로고침(실제 상태 대조 + 재스캔)</td></tr>
     <tr><td><b>파일 유형</b></td><td>확장자별 총 용량·개수</td><td>확장자를 누르면 해당 파일 목록(최대 2,000개)</td></tr>
     <tr><td><b>정리 추천</b></td><td>지워도 될 가능성이 큰 후보와 그 이유</td><td>폴더 트리·패턴 접기, 기준 선택, 안전 삭제</td></tr>
+    <tr><td><b>빠른 이동</b></td><td>출발지·목적지 두 패널과 이동 대기열</td><td>고른 것을 대기열에 쌓아 두었다가 [이동 시작] 으로 한 번에 옮기기</td></tr>
   </table>
   <p>모든 목록은 화면에 보이는 행만 그리는 가상화를 써서 결과가 수십만 건이어도 부드럽게 움직입니다. 크기 필터·확장자 필터
   (<code>*.pdb;*.log</code>)는 탭 오른쪽 위에서 적용합니다.</p>

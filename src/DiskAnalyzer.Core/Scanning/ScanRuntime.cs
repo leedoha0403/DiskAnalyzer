@@ -29,6 +29,10 @@ internal sealed class ScanSharedState
     public int AccessDenied;
     public int Errors;
 
+    /// <summary>48. 제외 규칙으로 빼놓은 수. 폴더는 하위까지 통째로 빠지므로 "가지치기한 폴더 수"다.</summary>
+    public int ExcludedFolders;
+    public int ExcludedFiles;
+
     /// <summary>Fast Scan 의 MFT 읽기 단계 진행 상황(레코드 단위).</summary>
     public long MftRecordsRead;
     public long MftRecordsTotal;

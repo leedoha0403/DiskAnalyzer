@@ -33,6 +33,7 @@ var mode = ScanMode.Auto;
 int workers = 0;
 int repeat = 1;
 bool sweep = false;
+var exclusions = new List<string>();
 
 for (int i = 1; i < args.Length; i++)
 {
@@ -55,6 +56,9 @@ for (int i = 1; i < args.Length; i++)
         case "--sweep":
             sweep = true;
             break;
+        case "--exclude" when i + 1 < args.Length:
+            exclusions.Add(args[++i]);
+            break;
     }
 }
 
@@ -72,23 +76,24 @@ if (sweep)
     foreach (int w in new[] { 1, 2, 4, 8, 12, 16, 24 })
     {
         if (w > Environment.ProcessorCount * 2) break;
-        await RunOnce(path, ScanMode.Compatibility, w);
+        await RunOnce(path, ScanMode.Compatibility, w, exclusions);
     }
 }
 else
 {
-    for (int i = 0; i < repeat; i++) await RunOnce(path, mode, workers);
+    for (int i = 0; i < repeat; i++) await RunOnce(path, mode, workers, exclusions);
 }
 
 return 0;
 
-static async Task RunOnce(string path, ScanMode mode, int workers)
+static async Task RunOnce(string path, ScanMode mode, int workers, IReadOnlyList<string> exclusions)
 {
     var options = new ScanOptions
     {
         Mode = mode,
         WorkerCount = workers,
         CacheResults = false,
+        ExclusionPatterns = exclusions,
     };
 
     var proc = Process.GetCurrentProcess();
@@ -126,7 +131,8 @@ static async Task RunOnce(string path, ScanMode mode, int workers)
         SizeFormatter.Format(peakWorkingSet).PadLeft(10),
         cpuPercent.ToString("F0").PadLeft(4) + "%"));
 
-    Console.WriteLine($"      skipped={result.SkippedFolders:N0} denied={result.AccessDenied:N0} errors={result.Errors:N0}");
+    Console.WriteLine($"      skipped={result.SkippedFolders:N0} denied={result.AccessDenied:N0} errors={result.Errors:N0}"
+        + (options.Exclusions.IsEmpty ? "" : $" excluded={result.ExcludedFolders:N0} dirs / {result.ExcludedFiles:N0} files"));
     foreach (var t in result.Store.GetChildren(0, includeFiles: false).Take(3))
         Console.WriteLine($"      {t.Name,-28} {t.SizeText,12} {t.RatioText,6}");
     foreach (var e in result.Store.GetExtensionRows().Take(3))
@@ -153,7 +159,7 @@ static void PrintDrives()
 
 static void PrintUsage()
 {
-    Console.WriteLine("DiskAnalyzer.Bench <path> [--mode auto|fast|compat] [--workers N] [--repeat N] [--sweep]");
+    Console.WriteLine("DiskAnalyzer.Bench <path> [--mode auto|fast|compat] [--workers N] [--repeat N] [--sweep] [--exclude PATTERN]...");
     Console.WriteLine("DiskAnalyzer.Bench --gen <dir> <fileCount> [filesPerDir]");
 }
 

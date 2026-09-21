@@ -80,6 +80,11 @@ public static class FolderScanner
         bool showHidden = options.ShowHiddenFiles;
         bool showSystem = options.ShowSystemFiles;
 
+        // 48. 제외 규칙을 전체 스캔과 똑같이 적용한다 — 그래야 제외한 항목이 "변경 감지"로 다시 뜨지 않는다.
+        var exclude = options.Exclusions;
+        bool filtering = !exclude.IsEmpty;
+        bool pathRules = exclude.HasPathRules;
+
         do
         {
             var name = GetName(data.cFileName);
@@ -92,10 +97,19 @@ public static class FolderScanner
 
             string n = new string(name[..Math.Min(name.Length, MaxNameChars)]);
             if ((attr & Win32.FILE_ATTRIBUTE_DIRECTORY) != 0)
+            {
+                if (filtering && (exclude.ExcludesDirectoryName(n)
+                    || (pathRules && exclude.MayEndPathRule(n) && exclude.ExcludesPath(Combine(path, n))))) continue;
+
                 listing.Dirs.Add(new FsDirInfo(n, data.ftLastWriteTime, data.ftCreationTime, data.ftLastAccessTime, attr,
                     (attr & Win32.FILE_ATTRIBUTE_REPARSE_POINT) != 0));
+            }
             else
+            {
+                if (filtering && exclude.ExcludesFile(n)) continue;
+
                 listing.Files.Add(new FsFileInfo(n, data.Size, data.ftLastWriteTime, data.ftCreationTime, data.ftLastAccessTime, attr));
+            }
         }
         while (Win32.FindNextFile(handle, out data));
 

@@ -169,8 +169,17 @@ public sealed class ScanController
             AccessDenied = stats.AccessDenied,
             Errors = stats.Errors,
             Cancelled = cancelled,
+            ExcludedFolders = stats.ExcludedFolders,
+            ExcludedFiles = stats.ExcludedFiles,
         };
         _result = result;
+
+        // 48. 제외한 것이 있으면 조용히 빼지 않고 완료 메시지로 알린다("왜 용량이 덜 나오지?"를 막는다).
+        if (!cancelled && (stats.ExcludedFolders > 0 || stats.ExcludedFiles > 0))
+        {
+            string excluded = $"제외 규칙 적용: 폴더 {stats.ExcludedFolders:N0} · 파일 {stats.ExcludedFiles:N0}";
+            message = message == null ? excluded : message + " · " + excluded;
+        }
 
         Publish(new ScanProgress(
             cancelled ? ScanState.Cancelled : ScanState.Completed, mode, rootPath, string.Empty,

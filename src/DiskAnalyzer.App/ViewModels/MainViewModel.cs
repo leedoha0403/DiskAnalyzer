@@ -35,6 +35,10 @@ public sealed partial class MainViewModel : ObservableObject
     public MainViewModel()
     {
         Options = new ScanOptions();
+        _exclusions = ExclusionSettings.Load();
+        Options.ExclusionPatterns = _exclusions.Patterns;
+        _exclusionText = _exclusions.ToText();
+
         Drives = new ObservableCollection<DriveInfoRow>(DriveService.GetLocalDrives());
         SelectedDrive = Drives.FirstOrDefault();
         IsElevated = DriveService.IsElevated();
@@ -53,6 +57,7 @@ public sealed partial class MainViewModel : ObservableObject
         ClearSearchCommand = new RelayCommand(ClearSearch);
         ApplyFilterCommand = new RelayCommand(RefreshCurrentView);
         ClearCacheCommand = new RelayCommand(() => { CacheService.Clear(); StatusMessage = "캐시를 삭제했습니다."; });
+        ApplyExclusionsCommand = new RelayCommand(ApplyExclusions);
         RefreshLargeFilesCommand = new RelayCommand(
             () => _ = RefreshLargeFilesAsync(), () => !IsRefreshing && !IsScanning && _current != null);
 
@@ -410,6 +415,50 @@ public sealed partial class MainViewModel : ObservableObject
     {
         get => Options.CacheResults;
         set { Options.CacheResults = value; Raise(); }
+    }
+
+    // ------------------------------------------------- 48. 스캔 제외 규칙
+
+    private readonly ExclusionSettings _exclusions;
+    private string _exclusionText;
+
+    /// <summary>설정 패널의 여러 줄 입력. 편집 중에는 저장하지 않고 <see cref="ApplyExclusionsCommand"/> 에서 한 번에 반영한다.</summary>
+    public string ExclusionText
+    {
+        get => _exclusionText;
+        set { if (Set(ref _exclusionText, value)) Raise(nameof(ExclusionSummary)); }
+    }
+
+    /// <summary>지금 스캔에 적용되어 있는 규칙 수. 화면에서 "적용했는가"를 바로 알 수 있게 한다.</summary>
+    public string ExclusionSummary
+    {
+        get
+        {
+            int active = Options.Exclusions.Patterns.Count;
+            bool dirty = !ExclusionSettings.SplitLines(_exclusionText).SequenceEqual(Options.Exclusions.Patterns, StringComparer.OrdinalIgnoreCase);
+            return active == 0
+                ? (dirty ? "적용 안 됨 - [적용] 을 누르세요" : "제외 규칙 없음")
+                : dirty ? $"{active}개 적용 중 - 바뀐 내용은 [적용] 후 반영" : $"{active}개 적용 중 (다음 스캔부터)";
+        }
+    }
+
+    public RelayCommand ApplyExclusionsCommand { get; private set; } = null!;
+
+    private void ApplyExclusions()
+    {
+        var patterns = ExclusionSettings.SplitLines(_exclusionText);
+        Options.ExclusionPatterns = patterns;
+
+        // 알아볼 수 없는 줄은 Parse 가 버린다. 사용자가 무엇이 남았는지 바로 보도록 정규화된 결과를 되돌려 쓴다.
+        var kept = Options.Exclusions.Patterns.ToList();
+        _exclusions.Patterns = kept;
+        _exclusions.Save();
+
+        ExclusionText = string.Join(Environment.NewLine, kept);
+        StatusMessage = kept.Count == 0
+            ? "스캔 제외 규칙을 지웠습니다. 다음 스캔부터 적용됩니다."
+            : $"스캔 제외 규칙 {kept.Count}개를 저장했습니다. 다음 스캔부터 적용됩니다.";
+        Raise(nameof(ExclusionSummary));
     }
 
     public IReadOnlyList<string> ThemeOptions { get; } = new[] { "Dark", "Light", "시스템" };

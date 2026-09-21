@@ -24,6 +24,10 @@ public sealed class ScanResult
     public int Errors { get; init; }
     public bool Cancelled { get; init; }
 
+    /// <summary>48. 제외 규칙으로 뺀 수. 폴더는 하위까지 통째로 빠지므로 "가지치기한 폴더 수"다.</summary>
+    public int ExcludedFolders { get; init; }
+    public int ExcludedFiles { get; init; }
+
     /// <summary>40. 이전 스캔 결과(캐시)에서 복원된 데이터인지 여부. UI 에 명확히 표시한다.</summary>
     public bool FromCache { get; init; }
 

@@ -151,6 +151,10 @@ internal sealed class CompatibilityScanner
         bool showSystem = _rt.Options.ShowSystemFiles;
         bool follow = _rt.Options.FollowReparsePoints;
 
+        var exclude = _rt.Options.Exclusions;
+        bool filtering = !exclude.IsEmpty;
+        bool pathRules = exclude.HasPathRules;
+
         do
         {
             if (ct.IsCancellationRequested) break;
@@ -162,6 +166,26 @@ internal sealed class CompatibilityScanner
             uint attr = data.dwFileAttributes;
             if (!showHidden && (attr & Win32.FILE_ATTRIBUTE_HIDDEN) != 0) continue;
             if (!showSystem && (attr & Win32.FILE_ATTRIBUTE_SYSTEM) != 0) continue;
+
+            // 48. 제외 규칙. 폴더는 노드도 만들지 않고 큐에도 넣지 않아 하위 전체를 읽지 않는다.
+            if (filtering)
+            {
+                bool isDir = (attr & Win32.FILE_ATTRIBUTE_DIRECTORY) != 0;
+                if (isDir)
+                {
+                    if (exclude.ExcludesDirectoryName(name)
+                        || (pathRules && exclude.MayEndPathRule(name) && exclude.ExcludesPath(Combine(item.Path, name))))
+                    {
+                        Interlocked.Increment(ref _rt.Stats.ExcludedFolders);
+                        continue;
+                    }
+                }
+                else if (exclude.ExcludesFile(name))
+                {
+                    Interlocked.Increment(ref _rt.Stats.ExcludedFiles);
+                    continue;
+                }
+            }
 
             if (batch.IsFull)
             {

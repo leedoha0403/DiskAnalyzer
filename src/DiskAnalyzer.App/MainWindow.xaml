@@ -1333,6 +1333,20 @@
                     <CheckBox Content="스캔 결과 캐시" IsChecked="{Binding CacheResults}" />
 
                     <Separator Margin="0,12" />
+
+                    <!-- 48. 스캔 제외 규칙 -->
+                    <TextBlock Text="스캔 제외 (한 줄에 하나)" Style="{StaticResource Caption}" />
+                    <TextBox Text="{Binding ExclusionText, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.AutomationId="ExclusionPatterns"
+                             AcceptsReturn="True" TextWrapping="NoWrap" Height="86" Margin="0,3,0,4"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                             FontFamily="Consolas"
+                             ToolTip="*.tmp = 확장자 (파일만)&#x0a;node_modules, ~$* = 이름 (파일·폴더, 깊이 무관)&#x0a;.git = 그 이름의 폴더 + 그 확장자의 파일&#x0a;C:\Windows\Temp, obj\Debug = 경로 (폴더 하위 전체)&#x0a;# 로 시작하면 주석" />
+                    <TextBlock Text="{Binding ExclusionSummary}" Style="{StaticResource Caption}" Margin="0,0,0,4" />
+                    <Button Content="제외 규칙 적용" Command="{Binding ApplyExclusionsCommand}"
+                            AutomationProperties.AutomationId="ApplyExclusions" Margin="0,0,0,6" />
+
+                    <Separator Margin="0,12" />
                     <Button Content="CSV 내보내기" Click="OnExportCsv" Margin="0,0,0,6" />
                     <Button Content="JSON 내보내기" Click="OnExportJson" Margin="0,0,0,6" />
                     <Button Content="캐시 삭제" Command="{Binding ClearCacheCommand}" Margin="0,0,0,6" />
