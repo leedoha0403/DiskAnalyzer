@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using DiskAnalyzer.App.ViewModels;
 using DiskAnalyzer.Core.Models;
 using DiskAnalyzer.Core.Services;
@@ -38,18 +39,41 @@ public partial class DeleteReviewWindow : Window
     /// <summary>실행 후 실제로 사라진 노드. 호출자가 데이터 모델에서 즉시 제거한다(14).</summary>
     public DeletionSummary? Summary => _vm.Summary;
 
-    private void OnCancel(object sender, RoutedEventArgs e)
+    private void OnCancel(object sender, RoutedEventArgs e) => CancelOrClose();
+
+    /// <summary>
+    /// Esc 는 [취소] 버튼과 같은 뜻이다. 삭제가 도는 중이면 먼저 <b>중지</b>고, 멈춘 뒤에 눌러야 창이 닫힌다.
+    ///
+    /// 버튼에 IsCancel 을 달지 않는 이유: WPF 가 Esc 에 DialogResult 를 스스로 넣어 창을 닫아 버려서
+    /// 삭제가 진행 중인데도 창이 사라진다. 중지와 닫기를 구분하려면 키를 직접 받아야 한다.
+    /// </summary>
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
-        if (_vm.IsRunning) { _vm.CancelRun(); return; }
-        DialogResult = false;
-        Close();
+        base.OnPreviewKeyDown(e);
+        if (e.Handled || e.Key != Key.Escape) return;
+
+        // 검색창에 글자가 있으면 Esc 는 먼저 그것을 지운다(탐색기와 같은 순서).
+        if (SearchBox.IsKeyboardFocusWithin && _vm.Search.Length > 0)
+        {
+            _vm.Search = string.Empty;
+            e.Handled = true;
+            return;
+        }
+
+        CancelOrClose();
+        e.Handled = true;
     }
 
-    private void OnClose(object sender, RoutedEventArgs e)
+    private void CancelOrClose()
     {
+        if (_vm.IsRunning) { _vm.CancelRun(); return; }
+
+        // 결과 화면에서는 [닫기] 와 같아야 한다 — 지운 것이 있으면 호출자가 모델에 반영해야 하기 때문이다.
         DialogResult = _vm.Summary is { SucceededCount: > 0 };
         Close();
     }
+
+    private void OnClose(object sender, RoutedEventArgs e) => CancelOrClose();
 
     private void OnRecycle(object sender, RoutedEventArgs e) => Run(permanent: false);
 
