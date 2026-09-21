@@ -1,79 +1,55 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using DiskAnalyzer.Core.Models;
-using DiskAnalyzer.Core.Services;
 
 namespace DiskAnalyzer.App;
 
 /// <summary>
 /// 49. 검색 결과 화면.
 ///  · 우클릭 / 더블 클릭으로 "이 항목이 있는 폴더"로 이동 (폴더 탭 + Treemap 이 같은 위치로 간다)
-///  · [경로별 묶기] 를 켜면 같은 목록이 폴더 트리 + 이름 접기로 바뀐다
+///  · [경로별 묶기] 를 켜면 같은 목록이 폴더별로 묶이고 반복되는 이름이 한 줄로 접힌다
+///
+/// 묶기를 별도 트리 컨트롤이 아니라 폴더 목록 안에서 들여쓰기로 그리는 이유:
+/// 선택 요약 · 삭제 · Treemap 동기화 · 우클릭 메뉴가 모두 이 ListView 의 SelectedItems 에 걸려 있고,
+/// WPF TreeView 는 Ctrl / Shift 다중 선택을 지원하지 않는다. 같은 목록에 그리면 그 기능이 전부 그대로 산다.
 /// </summary>
 public partial class MainWindow
 {
-    // ---------------------------------------------------------------- 목록(평면)에서 이동
-
     private void OnRevealRow(object sender, RoutedEventArgs e) => _vm.RevealRow(RowOf(sender));
 
-    // ---------------------------------------------------------------- 트리에서 이동
-
-    /// <summary>트리에서 실제로 누른 줄. SelectedItem 은 중첩 트리에서 상위 행으로 잘못 잡힐 수 있다.</summary>
-    private static SearchNode? NodeOf(RoutedEventArgs e)
-        => (e.OriginalSource as FrameworkElement)?.DataContext as SearchNode;
-
-    private SearchNode? MenuNode => SearchTreeView.SelectedItem as SearchNode;
-
-    /// <summary>파일 / 폴더 줄은 이동, 폴더·묶음 줄은 기본 동작(펼치기·접기)에 맡긴다.</summary>
-    private void OnSearchTreeDoubleClick(object sender, MouseButtonEventArgs e)
+    /// <summary>
+    /// 묶음 머리글을 누르면 선택이 아니라 펼치기 / 접기다.
+    /// 머리글은 진짜 항목이 아니라서 선택되면 삭제 대상 계산이 어긋난다 — 선택 자체를 만들지 않는다.
+    /// </summary>
+    private void OnFolderListPreviewClick(object sender, MouseButtonEventArgs e)
     {
-        if (NodeOf(e) is { Row: { } row }) _vm.RevealRow(row);
+        if (RowUnder(e.OriginalSource as DependencyObject) is not { IsSearchGroup: true } header) return;
+
+        _vm.ToggleSearchGroup(header);
+        e.Handled = true;
     }
 
-    private void OnSearchTreeMenuOpened(object sender, RoutedEventArgs e)
+    /// <summary>클릭 지점이 속한 행. 셀 안의 TextBlock 을 눌러도 행을 찾아낸다.</summary>
+    private static EntryRow? RowUnder(DependencyObject? source)
     {
-        var node = MenuNode;
-
-        // 묶음 줄은 여러 건을 대표하므로 갈 곳이 하나로 정해지지 않는다. 폴더 줄은 그 폴더로 갈 수 있다.
-        bool canReveal = node is { Kind: SearchNodeKind.Item } or { Kind: SearchNodeKind.Folder };
-        StReveal.IsEnabled = canReveal;
-        StOpenExplorer.IsEnabled = node != null;
-        StCopyPath.IsEnabled = node != null;
+        while (source != null && source is not ListViewItem)
+            source = VisualTreeHelper.GetParent(source);
+        return (source as ListViewItem)?.DataContext as EntryRow;
     }
 
-    private void OnSearchTreeReveal(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// 묶음 머리글을 걸러낸 선택 항목. Ctrl+A 는 머리글까지 고르므로
+    /// 선택 요약 · 삭제 · Treemap 동기화는 모두 이것을 거쳐야 한다.
+    /// </summary>
+    private static List<EntryRow> RealSelection(System.Collections.IList? items)
     {
-        var node = MenuNode;
-        if (node == null) return;
+        var rows = new List<EntryRow>();
+        if (items == null) return rows;
 
-        if (node.Row != null) _vm.RevealRow(node.Row);
-        else if (node.Kind == SearchNodeKind.Folder) _vm.NavigateToPath(node.FullPath);
-    }
-
-    private void OnSearchTreeOpenExplorer(object sender, RoutedEventArgs e)
-    {
-        if (MenuNode is { } node)
-            ShellService.OpenInExplorer(node.FullPath, node.Row?.IsDirectory ?? true);
-    }
-
-    private void OnSearchTreeCopyPath(object sender, RoutedEventArgs e)
-    {
-        if (MenuNode is { } node) TrySetClipboard(node.FullPath);
-    }
-
-    private void OnSearchTreeExpandAll(object sender, RoutedEventArgs e) => SetSearchTreeExpanded(true);
-
-    private void OnSearchTreeCollapseAll(object sender, RoutedEventArgs e) => SetSearchTreeExpanded(false);
-
-    private void SetSearchTreeExpanded(bool expanded)
-    {
-        foreach (var root in _vm.SearchTree) Apply(root);
-
-        void Apply(SearchNode node)
-        {
-            if (node.Children.Count > 0) node.IsExpanded = expanded;
-            foreach (var child in node.Children) Apply(child);
-        }
+        foreach (var item in items)
+            if (item is EntryRow { IsSearchGroup: false } row) rows.Add(row);
+        return rows;
     }
 }

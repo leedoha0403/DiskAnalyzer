@@ -388,7 +388,7 @@ public partial class MainWindow : Window
     private void SyncListSelectionToTreemap()
     {
         if (_syncingSelection || TreemapPanel.Visibility != Visibility.Visible) return;
-        Treemap.SetSelection(FolderList.SelectedItems.OfType<EntryRow>().Select(r => (r.IsDirectory, r.Id)));
+        Treemap.SetSelection(RealSelection(FolderList.SelectedItems).Select(r => (r.IsDirectory, r.Id)));
     }
 
     /// <summary>
@@ -495,6 +495,13 @@ public partial class MainWindow : Window
     {
         if (e.OriginalSource is not GridViewColumnHeader { Tag: string key }) return;
 
+        // 49. 묶여 있는 목록을 컬럼으로 정렬하면 폴더 계층이 흩어진다. 묶음 안의 순서는 크기순으로 고정이다.
+        if (ReferenceEquals(sender, FolderList) && _vm.ShowSearchTree)
+        {
+            _vm.StatusMessage = "경로별 묶기에서는 컬럼 정렬을 쓸 수 없습니다. [경로별 묶기] 를 끄면 정렬할 수 있습니다.";
+            return;
+        }
+
         SortTarget? target = ReferenceEquals(sender, FolderList) ? SortTarget.Folder
             : ReferenceEquals(sender, LargeFileList) ? SortTarget.LargeFiles
             : ReferenceEquals(sender, ExtensionList) ? SortTarget.Extensions
@@ -538,7 +545,7 @@ public partial class MainWindow : Window
     {
         if (sender is not MenuItem item) return Array.Empty<EntryRow>();
         var menu = ItemsControl.ItemsControlFromItemContainer(item) as ContextMenu ?? item.Parent as ContextMenu;
-        return (menu?.PlacementTarget as ListView)?.SelectedItems.OfType<EntryRow>().ToList() ?? new List<EntryRow>();
+        return RealSelection((menu?.PlacementTarget as ListView)?.SelectedItems);
     }
 
     private void OnSendLeft(object sender, RoutedEventArgs e)
@@ -754,9 +761,9 @@ public partial class MainWindow : Window
 
         int folders = 0, files = 0;
         long bytes = 0;
-        foreach (var item in list.SelectedItems)
+        // 49. 묶음 머리글은 진짜 항목이 아니라 세지 않는다(Ctrl+A 가 머리글까지 고른다).
+        foreach (var row in RealSelection(list.SelectedItems))
         {
-            if (item is not EntryRow row) continue;
             if (row.IsDirectory) folders++; else files++;
             bytes += row.Size;
         }
@@ -775,7 +782,7 @@ public partial class MainWindow : Window
 
     private void OnDeleteSelectedFolderItems(object sender, RoutedEventArgs e)
     {
-        var rows = FolderList.SelectedItems.OfType<EntryRow>().ToList();
+        var rows = RealSelection(FolderList.SelectedItems);
         if (rows.Count == 0)
         {
             _vm.StatusMessage = "삭제할 항목을 먼저 선택하세요 (Ctrl/Shift+클릭으로 여러 개 선택).";

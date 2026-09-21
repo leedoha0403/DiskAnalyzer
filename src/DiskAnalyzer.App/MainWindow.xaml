@@ -1,4 +1,4 @@
-﻿<Window x:Class="DiskAnalyzer.App.MainWindow"
+<Window x:Class="DiskAnalyzer.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ctl="clr-namespace:DiskAnalyzer.App.Controls"
@@ -14,6 +14,7 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <ctl:TreeRowWidthConverter x:Key="TreeRowWidth" />
+        <ctl:DepthIndentConverter x:Key="DepthIndent" />
 
         <!-- 15. 파일 / 폴더 우클릭 메뉴 -->
         <ContextMenu x:Key="RowMenu" x:Shared="False" Opened="OnRowMenuOpened">
@@ -39,7 +40,11 @@
 
         <!-- 6. 폴더 테이블 셀 템플릿 -->
         <DataTemplate x:Key="NameCell">
-            <StackPanel Orientation="Horizontal" ToolTip="{Binding FullPath}">
+            <!-- 49. 경로별 묶기는 같은 목록 안에서 들여쓰기로 표현한다(Depth 는 묶지 않으면 0 이라 평소와 똑같다). -->
+            <StackPanel Orientation="Horizontal" ToolTip="{Binding FullPath}"
+                        Margin="{Binding Depth, Converter={StaticResource DepthIndent}}">
+                <TextBlock Text="{Binding ChevronText}" Width="14" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextDimBrush}" FontSize="11" />
                 <Border Width="9" Height="9" CornerRadius="2" Margin="2,0,9,0" VerticalAlignment="Center">
                     <Border.Style>
                         <Style TargetType="Border">
@@ -52,7 +57,20 @@
                         </Style>
                     </Border.Style>
                 </Border>
-                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <!-- 묶음 머리글만 살짝 굵게. 색을 바꾸지 않아 목록의 결이 유지된다. -->
+                                <DataTrigger Binding="{Binding IsSearchGroup}" Value="True">
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="{Binding MatchCountText}" Style="{StaticResource Caption}"
+                           Margin="8,0,0,0" VerticalAlignment="Center" />
             </StackPanel>
         </DataTemplate>
 
@@ -553,6 +571,8 @@
 
                                 <Grid>
                                 <ListView x:Name="FolderList" AutomationProperties.AutomationId="FolderList"
+                                          Style="{StaticResource DataList}"
+                                          PreviewMouseLeftButtonDown="OnFolderListPreviewClick"
                                           ItemsSource="{Binding Rows}"
                                           SelectedItem="{Binding SelectedRow}"
                                           SelectionMode="Extended"
@@ -604,96 +624,7 @@
                                             </GridViewColumn>
                                         </GridView>
                                     </ListView.View>
-                                    <ListView.Style>
-                                        <Style TargetType="ListView" BasedOn="{StaticResource DataList}">
-                                            <Style.Triggers>
-                                                <!-- 49. 경로별 묶기를 켜면 같은 자리에 트리가 대신 선다 -->
-                                                <DataTrigger Binding="{Binding ShowSearchTree}" Value="True">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </ListView.Style>
                                 </ListView>
-
-                                <!-- 49. 검색 결과 폴더 트리 + 같은 이름 접기 -->
-                                <TreeView x:Name="SearchTreeView" ItemsSource="{Binding SearchTree}" Padding="8"
-                                          AutomationProperties.AutomationId="SearchTree"
-                                          VirtualizingPanel.ScrollUnit="Pixel"
-                                          MouseDoubleClick="OnSearchTreeDoubleClick"
-                                          Visibility="{Binding ShowSearchTree, Converter={StaticResource BoolToVis}}">
-                                    <TreeView.ContextMenu>
-                                        <ContextMenu Opened="OnSearchTreeMenuOpened">
-                                            <MenuItem x:Name="StReveal" Header="이 항목이 있는 폴더 열기" Click="OnSearchTreeReveal" />
-                                            <MenuItem x:Name="StOpenExplorer" Header="탐색기에서 열기" Click="OnSearchTreeOpenExplorer" />
-                                            <MenuItem x:Name="StCopyPath" Header="경로 복사" Click="OnSearchTreeCopyPath" />
-                                            <Separator />
-                                            <MenuItem Header="모두 펼치기" Click="OnSearchTreeExpandAll" />
-                                            <MenuItem Header="모두 접기" Click="OnSearchTreeCollapseAll" />
-                                        </ContextMenu>
-                                    </TreeView.ContextMenu>
-                                    <TreeView.ItemTemplate>
-                                        <HierarchicalDataTemplate ItemsSource="{Binding Children}">
-                                            <Grid Margin="0,1" ToolTip="{Binding FullPath}">
-                                                <Grid.Width>
-                                                    <MultiBinding Converter="{StaticResource TreeRowWidth}">
-                                                        <Binding Path="ActualWidth" RelativeSource="{RelativeSource AncestorType=TreeView}" />
-                                                        <Binding Path="Depth" />
-                                                    </MultiBinding>
-                                                </Grid.Width>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" MaxWidth="460" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-
-                                                <Border Width="9" Height="9" CornerRadius="2" Margin="0,0,8,0" VerticalAlignment="Center">
-                                                    <Border.Style>
-                                                        <Style TargetType="Border">
-                                                            <Setter Property="Background" Value="{DynamicResource FileIconBrush}" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsFolder}" Value="True">
-                                                                    <Setter Property="Background" Value="{DynamicResource FolderIconBrush}" />
-                                                                </DataTrigger>
-                                                                <DataTrigger Binding="{Binding Kind}" Value="Pattern">
-                                                                    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Border.Style>
-                                                </Border>
-
-                                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center"
-                                                           TextTrimming="CharacterEllipsis">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="FontWeight" Value="Normal" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsItem}" Value="False">
-                                                                    <Setter Property="FontWeight" Value="SemiBold" />
-                                                                </DataTrigger>
-                                                                <DataTrigger Binding="{Binding Kind}" Value="Pattern">
-                                                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-
-                                                <TextBlock Grid.Column="2" Text="{Binding Detail}" Style="{StaticResource Caption}"
-                                                           Margin="10,0,12,0" VerticalAlignment="Center"
-                                                           TextTrimming="CharacterEllipsis" />
-
-                                                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding SizeText}" Style="{StaticResource Numeric}"
-                                                               FontSize="12.5" MinWidth="90" TextAlignment="Right" Margin="0,0,14,0" />
-                                                    <TextBlock Text="{Binding CountText}" Style="{StaticResource Caption}" MinWidth="80" />
-                                                </StackPanel>
-                                            </Grid>
-                                        </HierarchicalDataTemplate>
-                                    </TreeView.ItemTemplate>
-                                </TreeView>
                                 </Grid>
                             </DockPanel>
 

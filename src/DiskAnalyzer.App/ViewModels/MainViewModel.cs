@@ -35,6 +35,7 @@ public sealed partial class MainViewModel : ObservableObject
     public MainViewModel()
     {
         Options = new ScanOptions();
+        _useSearchTree = _ui.SearchGroupByPath;      // 기억해 둔 값으로 시작한다(기본 켜짐)
         _exclusions = ExclusionSettings.Load();
         Options.ExclusionPatterns = _exclusions.Patterns;
         _exclusionText = _exclusions.ToText();
@@ -862,6 +863,7 @@ public sealed partial class MainViewModel : ObservableObject
         double ms = sw.Elapsed.TotalMilliseconds;
 
         IsSearchMode = true;
+        _searchHits = outcome.Rows;
         Rows = outcome.Rows;
         BuildSearchTree();
         CurrentPath = scoped
@@ -885,14 +887,22 @@ public sealed partial class MainViewModel : ObservableObject
     {
         IsSearchMode = false;
         _activeSearchTerm = string.Empty;
-        SetSearchTree(SearchFoldTree.Empty);
+        _searchHits = Array.Empty<EntryRow>();
+        _searchFold = SearchFoldTree.Empty;
+        _groupOf.Clear();
+        SearchFoldSummary = string.Empty;
+        Raise(nameof(HasSearchFoldSummary));
     }
 
     // -------------------------------------------- 49. 검색 결과 경로별 접기
 
+    private readonly UiSettings _ui = UiSettings.Load();
     private bool _useSearchTree;
 
-    /// <summary>검색 결과를 평면 목록 대신 폴더 트리 + 이름 접기로 본다. 검색 중에만 뜻이 있다.</summary>
+    /// <summary>
+    /// 검색 결과를 평면 목록 대신 폴더 트리 + 이름 접기로 본다. 검색 중에만 뜻이 있다.
+    /// 켜고 끈 상태는 ui.json 에 남아 다음에 앱을 열 때도 그대로다.
+    /// </summary>
     public bool UseSearchTree
     {
         get => _useSearchTree;
@@ -901,14 +911,14 @@ public sealed partial class MainViewModel : ObservableObject
             if (!Set(ref _useSearchTree, value)) return;
             Raise(nameof(ShowSearchTree));
             if (IsSearchMode) BuildSearchTree();
+
+            _ui.SearchGroupByPath = value;
+            _ui.Save();
         }
     }
 
-    /// <summary>화면이 목록 대신 트리를 보여 줄 때. 검색 중이 아니면 언제나 목록이다.</summary>
+    /// <summary>지금 목록이 묶여 있는가(검색 중 + 켜짐). 컬럼 정렬처럼 묶음과 상충하는 기능이 이것을 본다.</summary>
     public bool ShowSearchTree => IsSearchMode && _useSearchTree;
-
-    private IReadOnlyList<SearchNode> _searchTree = Array.Empty<SearchNode>();
-    public IReadOnlyList<SearchNode> SearchTree { get => _searchTree; private set => Set(ref _searchTree, value); }
 
     private string _searchFoldSummary = string.Empty;
 
@@ -917,19 +927,87 @@ public sealed partial class MainViewModel : ObservableObject
 
     public bool HasSearchFoldSummary => _searchFoldSummary.Length > 0;
 
+    /// <summary>검색이 찾아낸 결과 원본. 묶기를 껐다 켤 때 다시 검색하지 않으려고 들고 있는다.</summary>
+    private IReadOnlyList<EntryRow> _searchHits = Array.Empty<EntryRow>();
+
+    private SearchFoldTree _searchFold = SearchFoldTree.Empty;
+
+    /// <summary>머리글 행 -> 그 행이 대표하는 노드. 펼침 상태는 노드가 들고 있다.</summary>
+    private readonly Dictionary<EntryRow, SearchNode> _groupOf = new(ReferenceEqualityComparer.Instance);
+
     private void BuildSearchTree()
     {
-        if (!_useSearchTree) { SetSearchTree(SearchFoldTree.Empty); return; }
-        SetSearchTree(SearchFolder.Build(Rows));
+        if (!_useSearchTree)
+        {
+            _searchFold = SearchFoldTree.Empty;
+            _groupOf.Clear();
+            SearchFoldSummary = string.Empty;
+            Raise(nameof(HasSearchFoldSummary));
+            Rows = _searchHits;
+            return;
+        }
+
+        _searchFold = SearchFolder.Build(_searchHits);
+        SearchFoldSummary = _searchFold.PatternCount == 0
+            ? string.Empty
+            : $"{_searchFold.PatternCount:N0}개 묶음으로 {_searchFold.FoldedItemCount:N0}건을 접었습니다";
+        Raise(nameof(HasSearchFoldSummary));
+        FlattenSearchTree();
     }
 
-    private void SetSearchTree(SearchFoldTree tree)
+    /// <summary>
+    /// 트리를 "지금 펼쳐진 만큼만" 한 줄짜리 목록으로 편다.
+    /// 트리 컨트롤을 쓰지 않는 이유: 선택 요약 · 삭제 · Treemap 동기화 · 우클릭 메뉴가 모두
+    /// 폴더 목록의 SelectedItems 에 걸려 있고, WPF TreeView 는 Ctrl / Shift 다중 선택을 하지 못한다.
+    /// 같은 ListView 에 들여쓰기로 그리면 그 배선이 전부 그대로 살아 있다.
+    /// </summary>
+    private void FlattenSearchTree()
     {
-        SearchTree = tree.Roots;
-        SearchFoldSummary = tree.PatternCount == 0
-            ? string.Empty
-            : $"{tree.PatternCount:N0}개 묶음으로 {tree.FoldedItemCount:N0}건을 접었습니다";
-        Raise(nameof(HasSearchFoldSummary));
+        var flat = new List<EntryRow>(Math.Max(16, _searchHits.Count / 2));
+        _groupOf.Clear();
+
+        foreach (var root in _searchFold.Roots) Walk(root, 0);
+        Rows = flat;
+
+        void Walk(SearchNode node, int depth)
+        {
+            if (node.Kind == SearchNodeKind.Item)
+            {
+                var row = node.Row!;
+                row.Depth = depth;
+                row.SearchKind = SearchRowKind.None;
+                flat.Add(row);
+                return;
+            }
+
+            var header = new EntryRow
+            {
+                Kind = RowKind.Directory,
+                Id = -1,                       // 실제 노드가 아니다. 선택 / 삭제에서 걸러진다.
+                Name = node.Title,
+                FullPath = node.FullPath,
+                Size = node.Size,
+                Depth = depth,
+                SearchKind = node.Kind == SearchNodeKind.Folder ? SearchRowKind.Folder : SearchRowKind.Pattern,
+                MatchCount = node.MatchCount,
+                IsExpanded = node.IsExpanded,
+            };
+            flat.Add(header);
+            _groupOf[header] = node;
+
+            if (!node.IsExpanded) return;
+            foreach (var child in node.Children) Walk(child, depth + 1);
+        }
+    }
+
+    /// <summary>묶음 머리글을 펼치거나 접는다. 접혀 있던 하위는 다시 펼 때까지 목록에 만들지 않는다.</summary>
+    public bool ToggleSearchGroup(EntryRow? row)
+    {
+        if (row == null || !_groupOf.TryGetValue(row, out var node)) return false;
+
+        node.IsExpanded = !node.IsExpanded;
+        FlattenSearchTree();
+        return true;
     }
 
     // -------------------------------------------- 49. 검색 결과 -> 그 항목이 있는 폴더로
@@ -945,6 +1023,14 @@ public sealed partial class MainViewModel : ObservableObject
     {
         var store = _current?.Store;
         if (row == null || store == null) return;
+
+        // 49. 묶음 머리글은 노드 id 가 없다. 폴더 묶음이면 그 경로로 가고, 이름 묶음이면 갈 곳이 하나가 아니다.
+        if (row.IsSearchGroup)
+        {
+            if (row.SearchKind == SearchRowKind.Folder) NavigateToPath(row.FullPath);
+            else StatusMessage = $"{row.Name} 은(는) {row.MatchCount:N0}건을 묶은 줄입니다. 펼쳐서 항목을 고르세요.";
+            return;
+        }
 
         if (row.IsDirectory)
         {
