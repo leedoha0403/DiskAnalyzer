@@ -287,7 +287,7 @@
                                 <CheckBox Content="경로별 묶기" IsChecked="{Binding UseSearchTree}" Margin="14,0,0,0"
                                           AutomationProperties.AutomationId="UseSearchTree"
                                           Visibility="{Binding IsSearchMode, Converter={StaticResource BoolToVis}}"
-                                          ToolTip="검색 결과를 폴더 트리로 묶고, 같은 이름이 5건 이상이면 한 줄로 접습니다" />
+                                          ToolTip="검색 결과를 폴더 트리로 묶고, 같은 이름이 2건 이상이면 한 줄로 접습니다&#x0a;(예: R260827 과 R270100 에 하나씩 있는 Moros.mob → 공통 상위 폴더 아래 한 줄)" />
                                 <TextBlock Text="{Binding SearchFoldSummary}" Style="{StaticResource Caption}"
                                            VerticalAlignment="Center" Margin="10,0,0,0"
                                            Visibility="{Binding HasSearchFoldSummary, Converter={StaticResource BoolToVis}}" />

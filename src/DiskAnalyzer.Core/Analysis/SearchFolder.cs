@@ -17,7 +17,12 @@ namespace DiskAnalyzer.Core.Analysis;
 /// </summary>
 public static class SearchFolder
 {
-    public const int DefaultMinFold = 5;
+    /// <summary>
+    /// 검색은 2건만 겹쳐도 묶는 것이 이득이다. 정리 추천 탭은 5건인데, 거기서는 "지울 것"을 고르느라
+    /// 개별 항목이 보여야 하지만 검색은 "어디 있나"를 먼저 본다. 릴리스 폴더 두 개에 같은 파일이
+    /// 하나씩 있는 경우(가장 흔한 중복)가 5건 규칙에서는 전혀 묶이지 않는다.
+    /// </summary>
+    public const int DefaultMinFold = 2;
 
     private sealed class Dir
     {
@@ -34,7 +39,7 @@ public static class SearchFolder
         public List<SearchNode> Nodes { get; } = new();
     }
 
-    /// <param name="minFold">이 건수 이상일 때만 접는다.</param>
+    /// <param name="minFold">이 건수 이상일 때만 접는다(<see cref="DefaultMinFold"/> 참고).</param>
     /// <param name="expandDepth">이 깊이까지는 처음부터 펼쳐 둔다.</param>
     public static SearchFoldTree Build(IReadOnlyList<EntryRow> rows, int minFold = DefaultMinFold, int expandDepth = 2)
     {

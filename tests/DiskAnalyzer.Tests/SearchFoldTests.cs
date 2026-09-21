@@ -190,7 +190,28 @@ public sealed class SearchFoldTests
     {
         var rows = Enumerable.Range(0, 3).Select(i => File($@"C:\src\proj{i}\a.pdb")).ToArray();
 
-        Assert.DoesNotContain(All(SearchFolder.Build(rows)), n => n.Kind == SearchNodeKind.Pattern);
-        Assert.Single(All(SearchFolder.Build(rows, minFold: 3)), n => n.Kind == SearchNodeKind.Pattern);
+        Assert.Single(All(SearchFolder.Build(rows)), n => n.Kind == SearchNodeKind.Pattern);
+        Assert.DoesNotContain(All(SearchFolder.Build(rows, minFold: 5)), n => n.Kind == SearchNodeKind.Pattern);
+    }
+
+    /// <summary>
+    /// 릴리스 폴더 두 개에 같은 파일이 하나씩 있는 경우 — 검색 결과에서 가장 흔한 중복이다.
+    /// 정리 추천 탭의 5건 규칙을 그대로 쓰면 이것이 전혀 묶이지 않아 접기가 있으나 마나가 된다.
+    /// </summary>
+    [Fact]
+    public void A_file_that_exists_once_in_two_release_trees_is_folded()
+    {
+        var rows = new[]
+        {
+            File(@"C:\DNF\KDNF\R260827\Bin\Script\Moros.mob"),
+            File(@"C:\DNF\KDNF\R270100\Bin\Script\Moros.mob"),
+        };
+        var tree = SearchFolder.Build(rows);
+
+        var pattern = Assert.Single(All(tree), n => n.Kind == SearchNodeKind.Pattern);
+        Assert.Equal("Moros.mob", pattern.Title);
+        Assert.Equal(2, pattern.MatchCount);
+        Assert.Equal(@"C:\DNF\KDNF", pattern.FullPath);
+        Assert.Equal(2, ItemPaths(tree).Count);
     }
 }
