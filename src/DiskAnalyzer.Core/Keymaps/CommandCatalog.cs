@@ -33,12 +33,18 @@ public static class CommandIds
     public const string Open = "Selection.Open";
     public const string ShowDetails = "Selection.ShowDetails";
 
+    /// <summary>
+    /// 화면마다 "지금 고른 것을 없앤다" 는 뜻으로 쓰인다 —
+    /// 폴더 / Treemap 은 삭제 확인 창, 빠른 이동은 대기열에서 빼기. 키는 하나다.
+    /// </summary>
+    public const string Delete = "Selection.Delete";
+    public const string DeletePermanent = "Selection.DeletePermanent";
+
     public const string CopyPath = "Clipboard.CopyPath";
     public const string CopyPathList = "Clipboard.CopyPathList";
 
     public const string QueueSelected = "QuickMove.QueueSelected";
     public const string StartMove = "QuickMove.Start";
-    public const string RemoveFromQueue = "QuickMove.RemoveFromQueue";
 }
 
 /// <param name="Id">설정 파일에 저장되는 안정적인 이름. 한 번 정하면 바꾸지 않는다.</param>
@@ -91,13 +97,14 @@ public static class CommandCatalog
         new(CommandIds.SelectAll, Select, "전체 선택", Ctrl("A")),
         new(CommandIds.Open, Select, "열기 / 폴더 진입", Bare("Enter")),
         new(CommandIds.ShowDetails, Select, "상세정보", Bare("Space")),
+        new(CommandIds.Delete, Select, "선택 항목 삭제 (빠른 이동: 대기열에서 제거)", Bare("Delete")),
+        new(CommandIds.DeletePermanent, Select, "선택 항목 영구 삭제", new("Delete", Shift: true)),
 
         new(CommandIds.CopyPath, Copy, "선택 항목 경로 복사", Ctrl("C")),
         new(CommandIds.CopyPathList, Copy, "선택 항목 전체 경로 목록 복사", new("C", Ctrl: true, Shift: true)),
 
         new(CommandIds.QueueSelected, QuickMove, "선택 항목을 이동 대기열에 추가", Ctrl("Enter")),
         new(CommandIds.StartMove, QuickMove, "대기열 이동 시작", new("Enter", Ctrl: true, Shift: true)),
-        new(CommandIds.RemoveFromQueue, QuickMove, "대기열에서 제거", Bare("Delete")),
     };
 
     private static readonly Dictionary<string, CommandDef> ById = All.ToDictionary(c => c.Id, StringComparer.Ordinal);

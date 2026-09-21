@@ -94,6 +94,11 @@ public partial class MainWindow
             case CommandIds.ShowDetails:
                 return ShowDetailsOfFocusedItem();
 
+            case CommandIds.Delete:
+                return DeleteSelectionOnNavTab(permanent: false);
+            case CommandIds.DeletePermanent:
+                return DeleteSelectionOnNavTab(permanent: true);
+
             case CommandIds.CopyPath:
                 return CopyFocusedPaths(all: false);
             case CommandIds.CopyPathList:
@@ -108,6 +113,26 @@ public partial class MainWindow
     {
         if (!command.CanExecute(null)) return false;
         command.Execute(null);
+        return true;
+    }
+
+    /// <summary>
+    /// 폴더 / Treemap 에서 Delete · Shift+Delete. 지우지 않고 <b>삭제 대상 확인 창을 연다</b> —
+    /// 키를 눌렀다는 이유로 파일이 사라지는 일은 없어야 한다(7. 즉시 삭제 금지).
+    /// Treemap 의 선택은 폴더 목록과 같은 것이라 두 탭이 같은 대상을 본다.
+    /// </summary>
+    private bool DeleteSelectionOnNavTab(bool permanent)
+    {
+        if (NavBar.Visibility != Visibility.Visible) return false;
+
+        var rows = RealSelection(FolderList.SelectedItems);
+        if (rows.Count == 0)
+        {
+            _vm.StatusMessage = "삭제할 항목을 먼저 선택하세요 (Ctrl/Shift+클릭으로 여러 개 선택).";
+            return true;    // 키는 처리했다. 아무 일도 안 일어난 것처럼 보이지 않게 이유를 알린다.
+        }
+
+        _ = ShowDeleteReviewAsync(rows.Select(r => (r, r.Category)).ToList(), permanent);
         return true;
     }
 

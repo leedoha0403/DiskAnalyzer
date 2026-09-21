@@ -316,7 +316,7 @@ public partial class QuickMoveView : UserControl, IQuickMoveUi, IShortcutTarget
                 // 활성 패널의 선택 항목을 반대편 폴더로 보낼 대기열에 넣는다.
                 pane.QueueSelectedToOther();
                 return true;
-            case CommandIds.RemoveFromQueue when QueueList.IsKeyboardFocusWithin:
+            case CommandIds.Delete when QueueList.IsKeyboardFocusWithin:
                 RemoveSelected();
                 return true;
             default:

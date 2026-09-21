@@ -799,7 +799,8 @@ public partial class MainWindow : Window
     /// 판정(특히 폴더의 하위 탐색)은 I/O 라서 UI 스레드에서 돌리면 창이 뜨기 전에 멈춘 것처럼 보인다.
     /// 그래서 행 구성만 백그라운드로 돌리고, 창은 준비된 뒤에 연다.
     /// </summary>
-    private async Task ShowDeleteReviewAsync(IReadOnlyList<(EntryRow Row, CategoryFlags Flags)> entries)
+    private async Task ShowDeleteReviewAsync(IReadOnlyList<(EntryRow Row, CategoryFlags Flags)> entries,
+        bool permanent = false)
     {
         _vm.StatusMessage = $"{entries.Count:N0}개 항목의 삭제 가능 여부를 확인하는 중...";
 
@@ -807,12 +808,12 @@ public partial class MainWindow : Window
             () => entries.Select(e => DeleteReviewRow.From(e.Row, e.Flags)).ToList())
             .ConfigureAwait(true);
 
-        ShowDeleteReview(reviewRows);
+        ShowDeleteReview(reviewRows, permanent);
     }
 
-    private void ShowDeleteReview(IEnumerable<DeleteReviewRow> rows)
+    private void ShowDeleteReview(IEnumerable<DeleteReviewRow> rows, bool permanent = false)
     {
-        var window = new DeleteReviewWindow(rows) { Owner = this };
+        var window = new DeleteReviewWindow(rows, permanent) { Owner = this };
         _vm.SuspendFolderWatch();   // 지우는 동안 폴더 핸들을 잡고 있지 않게
         try { window.ShowDialog(); }
         finally { _vm.ResumeFolderWatch(); }

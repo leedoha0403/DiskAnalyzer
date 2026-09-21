@@ -13,11 +13,26 @@ public partial class DeleteReviewWindow : Window
 {
     private readonly DeleteReviewViewModel _vm;
 
-    public DeleteReviewWindow(IEnumerable<DeleteReviewRow> rows)
+    /// <param name="permanent">
+    /// 영구 삭제로 열렸는가(Shift+Delete). Enter 가 어느 버튼을 누를지와 창 제목이 이것으로 갈린다.
+    /// 어느 쪽으로 열리든 두 버튼은 모두 그대로 있다 — 창 안에서 마음을 바꿀 수 있어야 한다.
+    /// </param>
+    public DeleteReviewWindow(IEnumerable<DeleteReviewRow> rows, bool permanent = false)
     {
         InitializeComponent();
         _vm = new DeleteReviewViewModel(rows);
         DataContext = _vm;
+
+        // Enter 로 바로 진행할 수 있게 기본 버튼을 정한다. 목록에는 Enter 를 먹는 컨트롤이 없다.
+        if (permanent)
+        {
+            PermanentButton.IsDefault = true;
+            Title = "삭제할 파일 확인 - 영구 삭제";
+        }
+        else
+        {
+            RecycleButton.IsDefault = true;
+        }
     }
 
     /// <summary>실행 후 실제로 사라진 노드. 호출자가 데이터 모델에서 즉시 제거한다(14).</summary>
@@ -61,10 +76,14 @@ public partial class DeleteReviewWindow : Window
         if (permanent)
             message.AppendLine("\n영구 삭제한 파일은 휴지통을 거치지 않아 복구할 수 없습니다.");
 
+        // 되돌릴 수 있는 휴지통 이동이고 고위험 항목이 없을 때만 Enter 로 이어서 진행할 수 있게 한다.
+        // 영구 삭제와 P1 이 섞인 경우는 기본값을 취소에 두어 한 번 멈추게 한다.
+        bool enterConfirms = !permanent && highRisk == 0;
+
         var answer = MessageBox.Show(this, message.ToString(), $"{action} 확인",
             MessageBoxButton.OKCancel,
             permanent || highRisk > 0 ? MessageBoxImage.Warning : MessageBoxImage.Question,
-            MessageBoxResult.Cancel);
+            enterConfirms ? MessageBoxResult.OK : MessageBoxResult.Cancel);
         if (answer != MessageBoxResult.OK) return;
 
         // 60. 영구 삭제는 한 번 더 확인한다.
