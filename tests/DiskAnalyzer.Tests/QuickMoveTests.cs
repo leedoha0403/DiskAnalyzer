@@ -311,19 +311,19 @@ public sealed class QuickMoveTests : IDisposable
     }
 
     [Fact]
-    public void Pause_blocks_until_resumed()
+    public async Task Pause_blocks_until_resumed()
     {
         string f = File1(_src, "p.txt", "x");
         var engine = new MoveEngine();
         engine.Pause();
 
         var task = Task.Run(() => engine.Run(new[] { Req(f, _dst) }));
-        Assert.False(task.Wait(300));                  // 멈춰 있는 동안은 끝나지 않는다
+        Assert.NotSame(task, await Task.WhenAny(task, Task.Delay(300)));   // 멈춰 있는 동안은 끝나지 않는다
         Assert.True(File.Exists(f));
 
         engine.Resume();
-        Assert.True(task.Wait(5000));
-        Assert.Equal(1, task.Result.Moved);
+        Assert.Same(task, await Task.WhenAny(task, Task.Delay(5000)));     // 재개하면 끝난다
+        Assert.Equal(1, (await task).Moved);
     }
 
     // ------------------------------------------------------------------ 병렬
