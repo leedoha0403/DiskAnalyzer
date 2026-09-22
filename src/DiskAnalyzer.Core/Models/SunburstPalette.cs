@@ -57,16 +57,68 @@ public static class SunburstPalette
         return h < 0 ? h + 360d : h;
     }
 
-    /// <summary>조각의 채움 색. <paramref name="midAngle"/> 은 조각의 각도 중심이다.</summary>
-    public static SunburstColor Fill(SunburstKind kind, double midAngle) => kind switch
+    /// <summary>
+    /// 색조마다의 채도 · 밝기. 제품 스크린샷에서 잰 값이고 사이는 선형 보간한다.
+    ///
+    /// <para>처음에는 채도 · 밝기를 상수로 뒀는데 색감이 눈에 띄게 달랐다. 실제로 재 보니
+    /// <b>밝기는 66~73%로 거의 일정한데 채도는 색조를 따라 57% → 96% 로 오른다</b> —
+    /// 주황·연두 쪽은 묽고 파랑·보라 쪽은 진하다. 상수로 두면 따뜻한 쪽이 과하게 쨍하고
+    /// 차가운 쪽이 탁해진다. 사람 눈이 색조마다 채도를 다르게 느끼는 것을 보정한 값으로 보인다.</para>
+    /// </summary>
+    private static readonly (double Hue, double Saturation, double Lightness)[] Tones =
     {
-        // 파일은 회색이되 계열의 흔적만 남긴다 - 완전 무채색이면 어느 폴더에 속했는지 읽히지 않는다.
-        SunburstKind.File => FromHsl(HueAt(midAngle), 0.08, 0.62, 255),
-        SunburstKind.Smaller => FromHsl(HueAt(midAngle), 0.30, 0.62, 102),   // 반투명 = "이건 묶음이다"
-        SunburstKind.Hidden => FromHsl(28d, 0.85, 0.66, 255),
-        SunburstKind.Free => FromHsl(222d, 0.20, 0.45, 255),
-        _ => FromHsl(HueAt(midAngle), 0.72, 0.68, 255),
+        (27.9, 0.573, 0.706),    // #dfb189
+        (73.8, 0.667, 0.718),    // #d1e787
+        (91.6, 0.655, 0.727),    // #b7e78c
+        (129.4, 0.694, 0.692),   // #7ae78b
+        (158.8, 0.721, 0.676),   // #71e8be
+        (172.1, 0.737, 0.657),   // #67e8d7
+        (188.3, 0.945, 0.716),   // #72e8fb
+        (216.5, 0.925, 0.686),   // #659ff9
+        (244.3, 0.958, 0.718),   // #7c72fc
+        (270.4, 0.958, 0.718),   // #b872fc
     };
+
+    /// <summary>표에서 색조에 해당하는 채도 · 밝기를 찾는다. 양 끝 바깥은 끝값을 그대로 쓴다.</summary>
+    private static (double S, double L) ToneAt(double hue)
+    {
+        if (hue <= Tones[0].Hue) return (Tones[0].Saturation, Tones[0].Lightness);
+        if (hue >= Tones[^1].Hue) return (Tones[^1].Saturation, Tones[^1].Lightness);
+
+        for (int i = 1; i < Tones.Length; i++)
+        {
+            if (hue > Tones[i].Hue) continue;
+
+            var (h0, s0, l0) = Tones[i - 1];
+            var (h1, s1, l1) = Tones[i];
+            double t = (hue - h0) / (h1 - h0);
+            return (s0 + (s1 - s0) * t, l0 + (l1 - l0) * t);
+        }
+
+        return (Tones[^1].Saturation, Tones[^1].Lightness);
+    }
+
+    /// <summary>
+    /// 파일 꽃잎 색. 무채색이 아니라 <b>배경 쪽으로 기운 청회색</b>이고, 색 있는 꽃잎보다 확실히 어둡다
+    /// (실측 H221 S11~17% L40~50%). 그래서 파일이 뒤로 물러나고 폴더가 앞에 선다.
+    /// </summary>
+    private const double FileHue = 221d;
+
+    /// <summary>조각의 채움 색. <paramref name="midAngle"/> 은 조각의 각도 중심이다.</summary>
+    public static SunburstColor Fill(SunburstKind kind, double midAngle)
+    {
+        if (kind == SunburstKind.Hidden) return FromHsl(28d, 0.85, 0.66, 255);
+        if (kind == SunburstKind.Free) return FromHsl(222d, 0.20, 0.45, 255);
+        if (kind == SunburstKind.File) return FromHsl(FileHue, 0.14, 0.45, 255);
+
+        double hue = HueAt(midAngle);
+        var (s, l) = ToneAt(hue);
+
+        // 반투명 = "이건 실체가 아니라 묶음이다". 채도를 낮춰 색 있는 꽃잎과 더 확실히 갈라 둔다.
+        return kind == SunburstKind.Smaller
+            ? FromHsl(hue, s * 0.45, l, 102)
+            : FromHsl(hue, s, l, 255);
+    }
 
     /// <summary>
     /// 정리 추천 점수(0~100) 색. 후보가 아닌 것은 짙은 회색으로 눕혀 후보만 떠오르게 한다 —

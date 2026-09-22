@@ -26,7 +26,7 @@ namespace DiskAnalyzer.App.Controls;
 public sealed class SunburstControl : FrameworkElement, IShortcutTarget
 {
     /// <summary>중앙 빈 원의 반지름 비율. DaisyDisk 실측값(바깥 반지름의 0.22).</summary>
-    private const double HoleRatio = 0.22d;
+    private const double HoleRatio = 0.26d;
 
     /// <summary>겹 사이 간격(px). 배경이 비치는 것이 아니라 경계가 보일 만큼만.</summary>
     private const double RingGap = 1.5d;
@@ -413,12 +413,23 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
             dc.DrawEllipse(null, ring, _center, _hole - RingGap - 1d, _hole - RingGap - 1d);
         }
 
+        // 원본처럼 숫자와 단위를 두 줄로 나눈다. 한 줄로 쓰면 구멍 폭에 맞추느라 글자가 작아지고,
+        // 폴더 이름은 옆 목록 머리와 경로 막대에 이미 있어 여기서 또 쓰면 세 번 같은 말을 한다.
         string total = SizeFormatter.Format(_layout.TotalSize);
-        double fontSize = Math.Clamp(_hole * 0.34d, 10d, 21d);
+        int space = total.LastIndexOf(' ');
+        string value = space > 0 ? total[..space] : total;
+        string unit = space > 0 ? total[(space + 1)..] : string.Empty;
 
-        DrawCentered(dc, total, fontSize, LabelBrush, -fontSize * 0.62d);
-        if (_hole >= 34 && CenterName.Length > 0)
-            DrawCentered(dc, CenterName, Math.Max(9d, fontSize * 0.55d), MutedBrush, fontSize * 0.55d);
+        double fontSize = Math.Clamp(_hole * 0.46d, 11d, 30d);
+
+        if (unit.Length == 0)
+        {
+            DrawCentered(dc, value, fontSize, LabelBrush, 0d);
+            return;
+        }
+
+        DrawCentered(dc, value, fontSize, LabelBrush, -fontSize * 0.52d);
+        DrawCentered(dc, unit, fontSize * 0.82d, LabelBrush, fontSize * 0.5d);
     }
 
     private void DrawCentered(DrawingContext dc, string text, double fontSize, Brush brush, double dy)

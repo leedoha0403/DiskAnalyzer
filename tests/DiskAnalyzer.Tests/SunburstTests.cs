@@ -180,6 +180,48 @@ public class SunburstPaletteTests
         Assert.InRange(SunburstPalette.HueAt(angle), expectedHue - 7d, expectedHue + 7d);
     }
 
+    /// <summary>
+    /// 만들어진 색이 실제 제품 색과 같은가. 색조뿐 아니라 <b>채도 · 밝기까지</b> 맞아야 한다 —
+    /// 처음에는 채도 · 밝기를 상수로 뒀다가 "색감이 다르다"는 지적을 받았고, 재 보니 채도가
+    /// 색조를 따라 57% → 96% 로 오르고 있었다. 그 곡선을 여기서 고정한다.
+    /// </summary>
+    [Theory]
+    [InlineData(24d, 0xdf, 0xb1, 0x89)]    // 주황 - 가장 묽다
+    [InlineData(93d, 0xd1, 0xe7, 0x87)]    // 연두
+    [InlineData(111d, 0xb7, 0xe7, 0x8c)]
+    [InlineData(204d, 0x71, 0xe8, 0xbe)]
+    [InlineData(222d, 0x67, 0xe8, 0xd7)]   // 청록
+    [InlineData(282d, 0x65, 0x9f, 0xf9)]   // 파랑 - 가장 진하다
+    [InlineData(312d, 0x7c, 0x72, 0xfc)]
+    public void Generated_Color_Matches_The_Product(double angle, int r, int g, int b)
+    {
+        var c = SunburstPalette.Fill(SunburstKind.Directory, angle);
+
+        Assert.InRange(c.R, r - 14, r + 14);
+        Assert.InRange(c.G, g - 14, g + 14);
+        Assert.InRange(c.B, b - 14, b + 14);
+    }
+
+    /// <summary>채도가 색조를 따라 오른다는 것 자체를 못 박아 둔다(상수로 되돌아가면 깨진다).</summary>
+    [Fact]
+    public void Saturation_Rises_With_Hue()
+    {
+        static double Sat(SunburstColor c)
+        {
+            double mx = Math.Max(c.R, Math.Max(c.G, c.B)) / 255d;
+            double mn = Math.Min(c.R, Math.Min(c.G, c.B)) / 255d;
+            double l = (mx + mn) / 2d;
+            return mx == mn ? 0d : (l > 0.5 ? (mx - mn) / (2 - mx - mn) : (mx - mn) / (mx + mn));
+        }
+
+        double warm = Sat(SunburstPalette.Fill(SunburstKind.Directory, 24d));    // 주황
+        double mid = Sat(SunburstPalette.Fill(SunburstKind.Directory, 200d));    // 청록
+        double cool = Sat(SunburstPalette.Fill(SunburstKind.Directory, 300d));   // 파랑 / 보라
+
+        Assert.True(warm < mid, $"주황({warm:P0})이 청록({mid:P0})보다 묽어야 한다");
+        Assert.True(mid < cool, $"청록({mid:P0})이 파랑({cool:P0})보다 묽어야 한다");
+    }
+
     [Fact]
     public void Hue_Stays_In_Range_For_Any_Angle()
     {
@@ -198,10 +240,18 @@ public class SunburstPaletteTests
     [Fact]
     public void Files_Are_Grey_And_Groups_Are_Translucent()
     {
+        // 무채색이 아니라 배경 쪽으로 기운 청회색이다(실측 H221 S14%) - 그래서 R<G<B 가 된다.
         var file = SunburstPalette.Fill(SunburstKind.File, 120d);
-        Assert.InRange(Math.Abs(file.R - file.G), 0, 22);
-        Assert.InRange(Math.Abs(file.G - file.B), 0, 22);
+        Assert.True(file.R < file.G && file.G < file.B, "파일은 배경 쪽으로 기운 청회색");
+        Assert.InRange(Math.Abs(file.R - file.B), 0, 45);
         Assert.Equal(255, file.A);
+
+        // 각도가 달라도 파일 색은 같다 - 파일은 위치가 아니라 "파일이라는 사실" 로 칠한다.
+        Assert.Equal(file, SunburstPalette.Fill(SunburstKind.File, 300d));
+
+        // 색 있는 꽃잎보다 확실히 어두워야 파일이 뒤로 물러난다.
+        var folder = SunburstPalette.Fill(SunburstKind.Directory, 120d);
+        Assert.True(file.R + file.G + file.B < folder.R + folder.G + folder.B);
 
         var group = SunburstPalette.Fill(SunburstKind.Smaller, 120d);
         Assert.True(group.A < 160, "묶음은 반투명이어야 구분된다");

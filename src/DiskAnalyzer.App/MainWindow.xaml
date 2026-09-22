@@ -626,7 +626,7 @@
                             Background="{DynamicResource SurfaceAltBrush}"
                             BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0">
                         <DockPanel>
-                            <Button DockPanel.Dock="Right" Content="삭제..."
+                            <Button DockPanel.Dock="Right" Content="삭제..." Style="{StaticResource DangerPillButton}"
                                     AutomationProperties.AutomationId="CollectorDelete"
                                     Click="OnCollectorDelete" Margin="8,0,0,0" Padding="14,3"
                                     IsEnabled="{Binding HasCollected}"
@@ -825,16 +825,17 @@
                              조각에 이름을 쓰지 않는다 - 이름은 옆 목록이 맡고 그림은 비율만 말한다. -->
                         <DockPanel x:Name="SunburstPanel" Visibility="Collapsed">
 
-                            <Border DockPanel.Dock="Right" Width="278" Padding="14,12"
+                            <Border DockPanel.Dock="Right" Width="322" Padding="18,14"
                                     Background="{DynamicResource SurfaceAltBrush}"
                                     BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1,0,0,0">
                                 <DockPanel>
+                                    <!-- 현재 폴더 한 줄. 원본처럼 이름과 총량만 크게 둔다. -->
                                     <Grid DockPanel.Dock="Top">
                                         <TextBlock Text="{Binding SunburstTitle}" Style="{StaticResource H2}"
-                                                   TextTrimming="CharacterEllipsis" Margin="0,0,86,0"
+                                                   FontSize="16" TextTrimming="CharacterEllipsis" Margin="0,0,96,0"
                                                    ToolTip="{Binding SunburstTitle}" />
                                         <TextBlock Text="{Binding SunburstTotal}" Style="{StaticResource Numeric}"
-                                                   HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                                   FontSize="15" HorizontalAlignment="Right" VerticalAlignment="Center" />
                                     </Grid>
                                     <TextBlock DockPanel.Dock="Top" Text="가리키는 중 - 현재 위치는 그대로입니다"
                                                Style="{StaticResource Caption}" Margin="0,2,0,0"
@@ -843,21 +844,7 @@
                                     <Border DockPanel.Dock="Top" Height="1" Margin="0,8"
                                             Background="{DynamicResource BorderBrushSoft}" />
 
-                                    <!-- 링을 무엇으로 칠할지. 각도는 그대로고 색만 바뀐다 -
-                                         같은 그림에 "무엇이 큰가 / 지워도 되는가 / 늘었는가" 세 질문을 걸어 본다. -->
-                                    <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="색" Style="{StaticResource Caption}"
-                                                   VerticalAlignment="Center" Margin="0,0,7,0" />
-                                        <ComboBox Grid.Column="1" ItemsSource="{Binding RingTintOptions}"
-                                                  SelectedItem="{Binding SelectedRingTint}"
-                                                  AutomationProperties.AutomationId="RingTint"
-                                                  km:ShortcutHint.Command="View.CycleRingTint"
-                                                  km:ShortcutHint.Text="링의 색 기준 {0}&#10;크기 = 무엇이 큰가 · 정리 추천 = 지워도 되는가 · 증감 = 지난 스캔보다 늘었는가" />
-                                    </Grid>
+
 
                                     <ListBox x:Name="SunburstList" ItemsSource="{Binding SunburstSidebar}"
                                              AutomationProperties.AutomationId="SunburstSidebar"
@@ -871,18 +858,19 @@
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-                                                    <Ellipse Width="8" Height="8" Margin="0,0,9,0"
+                                                    <Ellipse Width="10" Height="10" Margin="0,0,11,0"
                                                              VerticalAlignment="Center" Fill="{Binding Dot}" />
-                                                    <TextBlock Grid.Column="1" Text="{Binding Name}"
+                                                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="14.5"
                                                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                                     <TextBlock Grid.Column="2" Text="{Binding SizeText}"
-                                                               Style="{StaticResource Numeric}" Margin="10,0,0,0"
-                                                               VerticalAlignment="Center" />
+                                                               Style="{StaticResource Numeric}" FontSize="13.5"
+                                                               Margin="12,0,0,0" VerticalAlignment="Center" />
                                                 </Grid>
                                             </DataTemplate>
                                         </ListBox.ItemTemplate>
                                         <ListBox.ItemContainerStyle>
                                             <Style TargetType="ListBoxItem" BasedOn="{StaticResource PlainListItem}">
+                                                <Setter Property="Padding" Value="4,4" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsDim}" Value="True">
                                                         <Setter Property="Opacity" Value="0.58" />
@@ -894,15 +882,29 @@
                                 </DockPanel>
                             </Border>
 
-                            <Border DockPanel.Dock="Bottom" Padding="12,7"
+                            <Border DockPanel.Dock="Bottom" Padding="12,6"
                                     Background="{DynamicResource SurfaceAltBrush}"
                                     BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0">
-                                <TextBlock x:Name="SunburstInfo" Style="{StaticResource Caption}"
-                                           TextTrimming="CharacterEllipsis" />
+                                <DockPanel>
+                                    <!-- 색 기준은 옆 목록이 아니라 여기 둔다. 목록은 원본처럼
+                                         "이름 + 총량 + 항목" 만 남기는 편이 훨씬 조용하다. -->
+                                    <TextBlock DockPanel.Dock="Left" Text="색" Style="{StaticResource Caption}"
+                                               VerticalAlignment="Center" Margin="0,0,7,0" />
+                                    <ComboBox DockPanel.Dock="Left" Width="132" Margin="0,0,14,0"
+                                              ItemsSource="{Binding RingTintOptions}"
+                                              SelectedItem="{Binding SelectedRingTint}"
+                                              AutomationProperties.AutomationId="RingTint"
+                                              km:ShortcutHint.Command="View.CycleRingTint"
+                                              km:ShortcutHint.Text="링의 색 기준 {0}&#10;크기 = 무엇이 큰가 · 정리 추천 = 지워도 되는가 · 증감 = 지난 스캔보다 늘었는가" />
+                                    <TextBlock x:Name="SunburstInfo" Style="{StaticResource Caption}"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                </DockPanel>
                             </Border>
 
+                            <!-- 가운데 구멍과 이음선은 링이 놓인 패널과 같은 색이어야 한다.
+                                 창 배경(더 어두움)을 쓰면 구멍이 검은 원처럼 도드라진다. -->
                             <ctl:SunburstControl x:Name="Sunburst"
-                                                 BackdropBrush="{DynamicResource WindowBackground}"
+                                                 BackdropBrush="{DynamicResource SurfaceBrush}"
                                                  LabelBrush="{DynamicResource TextBrush}"
                                                  MutedBrush="{DynamicResource TextMutedBrush}"
                                                  SelectionBrush="{DynamicResource AccentBrush}"

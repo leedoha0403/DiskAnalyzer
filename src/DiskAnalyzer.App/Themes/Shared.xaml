@@ -84,6 +84,15 @@
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
+    <!-- 수집함의 삭제. 테두리만 있는 DangerButton 과 달리 채워서, 화면에서 "돌아올 수 없는 버튼" 이
+         하나뿐임을 분명히 한다(원본도 빨간 알약 하나만 둔다). -->
+    <Style x:Key="DangerPillButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="{DynamicResource BarFillStrongBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BarFillStrongBrush}" />
+        <Setter Property="Foreground" Value="#FFFFFFFF" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
     <Style x:Key="LinkButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
