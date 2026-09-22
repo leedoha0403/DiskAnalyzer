@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="DiskAnalyzer.Tests" />
+    <InternalsVisibleTo Include="DiskAnalyzer.Bench" />
   </ItemGroup>
 
 </Project>

@@ -276,4 +276,39 @@ public class SpaceLedgerTests
         Assert.Contains("제외 규칙 4폴더", l.ExplainHidden(0, 0, 4));
         Assert.Contains("메타데이터", l.ExplainHidden(0, 0, 0));
     }
+
+    [Fact]
+    public void Small_Gap_Is_Explained_As_Metadata()
+    {
+        var l = SpaceLedger.Create(400 * Gb, 407 * Gb, 500 * Gb, true);   // 1.7%
+
+        Assert.False(l.HiddenIsSuspicious);
+        Assert.DoesNotContain("읽지 못했을", l.ExplainHidden(0, 0, 0));
+    }
+
+    [Fact]
+    public void Huge_Gap_Is_Not_Blamed_On_Metadata()
+    {
+        // Fast 스캔이 $MFT 절반만 읽었을 때 실제로 나온 숫자다(1.23 TB 스캔 / 3.06 TB 사용).
+        const long Tb = 1024L * Gb;
+        var l = SpaceLedger.Create((long)(1.23 * Tb), (long)(3.06 * Tb), (long)(3.73 * Tb), true);
+
+        Assert.True(l.HasHidden);
+        Assert.True(l.HiddenIsSuspicious);
+
+        string why = l.ExplainHidden(0, 0, 0);
+        Assert.Contains("메타데이터로 설명되는 크기가 아닙니다", why);
+        Assert.Contains("읽지 못했을", why);
+        Assert.Contains("60%", why);
+    }
+
+    [Fact]
+    public void Suspicious_Line_Is_Drawn_At_Ten_Percent()
+    {
+        var under = SpaceLedger.Create(910 * Gb, 1000 * Gb, 2000 * Gb, true);   // 9%
+        var over = SpaceLedger.Create(890 * Gb, 1000 * Gb, 2000 * Gb, true);    // 11%
+
+        Assert.False(under.HiddenIsSuspicious);
+        Assert.True(over.HiddenIsSuspicious);
+    }
 }

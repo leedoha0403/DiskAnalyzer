@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using DiskAnalyzer.Core.Models;
 using DiskAnalyzer.Core.Scanning;
+using DiskAnalyzer.Core.Scanning.Ntfs;
 using DiskAnalyzer.Core.Services;
 
 // 44. 벤치마크.
@@ -11,6 +12,7 @@ using DiskAnalyzer.Core.Services;
 //    DiskAnalyzer.Bench C:\Windows --mode compat --workers 4
 //    DiskAnalyzer.Bench C:\Users --sweep        워커 수 스윕
 //    DiskAnalyzer.Bench --gen D:\bench 1000000  합성 파일 트리 생성(테스트용)
+//    DiskAnalyzer.Bench C:\ --mft               $MFT 런리스트 진단(관리자 권한 필요)
 
 if (args.Length == 0)
 {
@@ -29,6 +31,13 @@ if (args[0].Equals("--gen", StringComparison.OrdinalIgnoreCase))
 }
 
 string path = args[0];
+
+if (args.Contains("--mft", StringComparer.OrdinalIgnoreCase))
+{
+    PrintMftDiagnostics(path);
+    return 0;
+}
+
 var mode = ScanMode.Auto;
 int workers = 0;
 int repeat = 1;
@@ -151,6 +160,56 @@ static async Task RunOnce(string path, ScanMode mode, int workers, IReadOnlyList
     Console.WriteLine();
 }
 
+/// <summary>
+/// $MFT 를 왜 다 못 읽었는지 눈으로 보기 위한 진단.
+/// 런리스트가 $MFT 전체를 덮는지가 핵심이다 - 덜 덮으면 뒤쪽 파일이 통째로 사라지고
+/// 그만큼이 "숨은 공간" 으로 둔갑한다.
+/// </summary>
+static void PrintMftDiagnostics(string path)
+{
+    if (!DriveService.IsElevated())
+    {
+        Console.WriteLine("관리자 권한이 필요합니다. 관리자 콘솔에서 다시 실행하세요.");
+        return;
+    }
+
+    using var reader = new MftReader();
+    if (!reader.Open(path[0]))
+    {
+        Console.WriteLine($"볼륨을 열지 못했습니다: {reader.Error}");
+        return;
+    }
+
+    var sw = Stopwatch.StartNew();
+    var table = reader.ReadAll(showHidden: true, showSystem: true, physical: false, CancellationToken.None);
+    sw.Stop();
+
+    Console.WriteLine($"클러스터 크기   : {reader.BytesPerCluster:N0} bytes");
+    Console.WriteLine($"레코드 크기     : {reader.FileRecordSize:N0} bytes");
+    Console.WriteLine($"$MFT 논리 크기  : {SizeFormatter.Format(reader.MftDataSize)}");
+    Console.WriteLine($"$MFT 할당 크기  : {SizeFormatter.Format(reader.MftAllocSize)}");
+    Console.WriteLine($"런리스트가 덮은 : {SizeFormatter.Format(reader.MftCoveredBytes)}  (조각 {reader.MftRunCount:N0}개)");
+    Console.WriteLine($"$ATTRIBUTE_LIST : {(reader.MftHasAttributeList ? "있음 - $DATA 가 확장 레코드로 흩어져 있다" : "없음")}");
+    Console.WriteLine($"레코드 슬롯     : {reader.RecordsTotal:N0}");
+    Console.WriteLine($"읽은 레코드     : {reader.RecordsRead:N0}");
+    Console.WriteLine($"소요            : {sw.Elapsed.TotalSeconds:F2}s");
+
+    if (table == null)
+    {
+        Console.WriteLine($"결과            : 실패 - {reader.Error}");
+        return;
+    }
+
+    int inUse = 0, dirs = 0;
+    for (int i = 0; i < table.Count; i++)
+    {
+        if (!table.IsInUse(i)) continue;
+        inUse++;
+        if (table.IsDirectory(i)) dirs++;
+    }
+    Console.WriteLine($"사용 중 레코드  : {inUse:N0}  (폴더 {dirs:N0} / 파일 {inUse - dirs:N0})");
+}
+
 static void PrintHeader()
 {
     Console.WriteLine(string.Join(" | ",
@@ -171,6 +230,7 @@ static void PrintDrives()
 static void PrintUsage()
 {
     Console.WriteLine("DiskAnalyzer.Bench <path> [--mode auto|fast|compat] [--workers N] [--repeat N] [--sweep] [--exclude PATTERN]...");
+    Console.WriteLine("DiskAnalyzer.Bench <path> --mft            ($MFT 런리스트 진단, 관리자 권한)");
     Console.WriteLine("DiskAnalyzer.Bench --gen <dir> <fileCount> [filesPerDir]");
 }
 

@@ -171,6 +171,7 @@
                                   AutomationProperties.AutomationId="DockToggle"
                                   ToolTip="화면 오른쪽에 '빠른 이동' 도크를 붙입니다. 폴더 / Treemap 을 보면서 출발지(위)·목적지(아래)를 함께 볼 수 있습니다" />
                     <ToggleButton Content="설정" IsChecked="{Binding ShowSettings}" Margin="0,0,8,0"
+                                  AutomationProperties.AutomationId="ToggleSettings"
                                   ToolTip="스캔 방식 · 테마 · 제외 규칙 · 내보내기&#10;맨 아래 [단축키 설정...] 에서 모든 단축키를 바꿀 수 있습니다" />
                     <ToggleButton Content="성능" IsChecked="{Binding ShowPerfMonitor}"
                                   ToolTip="스캔 속도 · 워커 수 · 큐 길이 · 메모리를 실시간으로 봅니다" />
@@ -1614,9 +1615,25 @@
             <Border Grid.Column="2" Style="{StaticResource Card}" Width="330" HorizontalAlignment="Right" VerticalAlignment="Top"
                     Margin="0,10,10,0" Background="{DynamicResource SurfaceBrush}"
                     Visibility="{Binding ShowSettings, Converter={StaticResource BoolToVis}}">
-                <StackPanel>
-                    <TextBlock Text="설정" Style="{StaticResource H2}" Margin="0,0,0,12" />
+                <!-- 설정이 늘어나면 창 아래로 넘쳐 맨 끝 항목이 조용히 잘려 나갔다(두 번 그랬다).
+                     제목과 아래쪽 버튼 줄은 못 박고, 가운데만 스크롤한다 —
+                     [단축키 설정...] 은 창을 아무리 줄여도 자리를 지킨다. -->
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="설정" Style="{StaticResource H2}" Margin="0,0,0,12" />
 
+                    <StackPanel DockPanel.Dock="Bottom">
+                        <Separator Margin="0,12" />
+                        <Button Content="CSV 내보내기" Click="OnExportCsv" Margin="0,0,0,6" />
+                        <Button Content="JSON 내보내기" Click="OnExportJson" Margin="0,0,0,6" />
+                        <Button Content="캐시 삭제" Command="{Binding ClearCacheCommand}" Margin="0,0,0,6" />
+                        <Button Content="단축키 설정..." Click="OnOpenShortcutSettings"
+                                AutomationProperties.AutomationId="OpenShortcutSettings"
+                                ToolTip="기능별 단축키를 확인하고 바꿉니다" />
+                    </StackPanel>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              PanningMode="VerticalOnly">
+                <StackPanel>
                     <TextBlock Text="Scan Mode" Style="{StaticResource Caption}" />
                     <ComboBox ItemsSource="{Binding ScanModeOptions}" SelectedItem="{Binding SelectedScanMode}"
                               Margin="0,3,0,10" />
@@ -1660,14 +1677,9 @@
                     <Button Content="제외 규칙 적용" Command="{Binding ApplyExclusionsCommand}"
                             AutomationProperties.AutomationId="ApplyExclusions" Margin="0,0,0,6" />
 
-                    <Separator Margin="0,12" />
-                    <Button Content="CSV 내보내기" Click="OnExportCsv" Margin="0,0,0,6" />
-                    <Button Content="JSON 내보내기" Click="OnExportJson" Margin="0,0,0,6" />
-                    <Button Content="캐시 삭제" Command="{Binding ClearCacheCommand}" Margin="0,0,0,6" />
-                    <Button Content="단축키 설정..." Click="OnOpenShortcutSettings"
-                            AutomationProperties.AutomationId="OpenShortcutSettings"
-                            ToolTip="기능별 단축키를 확인하고 바꿉니다" />
                 </StackPanel>
+                </ScrollViewer>
+                </DockPanel>
             </Border>
 
             <!-- ========== 43. 개발용 성능 모니터 ========== -->

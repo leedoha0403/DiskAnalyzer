@@ -40,6 +40,22 @@ public sealed class SpaceLedger
     /// <summary>이보다 작은 차이는 항목으로 만들지 않는다(64 MB).</summary>
     public const long HiddenThreshold = 64L * 1024 * 1024;
 
+    /// <summary>숨은 공간이 사용량에서 차지하는 비율.</summary>
+    public double HiddenRatio => VolumeUsed > 0 ? (double)Hidden / VolumeUsed : 0d;
+
+    /// <summary>
+    /// 메타데이터나 권한으로 설명될 수 있는 한계선(10%).
+    ///
+    /// <para>$MFT 와 저널은 볼륨의 몇 퍼센트다. 권한 없는 폴더도 보통 그 정도다.
+    /// 이 선을 넘으면 원인은 거의 항상 <b>스캔이 일부를 못 읽은 것</b>이다 —
+    /// 실제로 Fast 스캔이 $MFT 절반만 읽고 나머지 1.8 TB 를 "숨은 공간" 으로 내놓은 적이 있다.
+    /// 그때 "메타데이터일 가능성이 높습니다" 라고 말한 것이 가장 큰 잘못이었다.</para>
+    /// </summary>
+    public const double SuspiciousRatio = 0.10;
+
+    /// <summary>메타데이터로 설명하기엔 너무 큰가.</summary>
+    public bool HiddenIsSuspicious => HasHidden && HiddenRatio >= SuspiciousRatio;
+
     public string ScannedText => SizeFormatter.Format(Scanned);
     public string HiddenText => SizeFormatter.Format(Hidden);
     public string FreeText => SizeFormatter.Format(Free);
@@ -81,8 +97,16 @@ public sealed class SpaceLedger
         if (skipped > 0) parts.Add($"건너뜀 {skipped:N0}건");
         if (excludedFolders > 0) parts.Add($"제외 규칙 {excludedFolders:N0}폴더");
 
-        return parts.Count == 0
+        string cause = parts.Count == 0
             ? "파일시스템 메타데이터($MFT · 저널 등)일 가능성이 높습니다."
             : string.Join(" · ", parts) + " + 파일시스템 메타데이터";
+
+        if (!HiddenIsSuspicious) return cause;
+
+        // 이 크기를 메타데이터로 설명하면 거짓말이 된다. 모른다고 말하는 편이 낫다.
+        return $"사용량의 {HiddenRatio * 100:F0}% 입니다 — 메타데이터로 설명되는 크기가 아닙니다.\n"
+             + "스캔이 일부를 읽지 못했을 수 있습니다. 다시 스캔해 보고, 그래도 같으면 "
+             + "설정에서 Scan Mode 를 Compatibility 로 두고 비교해 보세요.\n"
+             + cause;
     }
 }
