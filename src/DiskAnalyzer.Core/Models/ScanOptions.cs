@@ -61,7 +61,17 @@ public sealed class ScanOptions
     /// 22. 스레드 수 제어.
     /// 파일 시스템 스캔은 I/O Bound 이며, HDD 에서는 병렬 요청이 오히려 seek 를 유발해 느려진다.
     /// SSD/NVMe 라도 코어 수만큼 늘리면 Queue Contention 과 커널 디렉터리 캐시 경합이 커지므로 상한을 둔다.
-    /// (28코어 머신에서 12 초과로 늘려도 FindNextFile 처리량이 늘지 않는다는 벤치 결과 기준)
+    ///
+    /// <para>상한은 원래 12 였다. 그 근거였던 스윕은 <b>28만 파일 트리</b>에서 잰 것이라 전체가 0.3초 —
+    /// 워커를 늘려도 차이가 측정 잡음에 묻혔다. 2,766만 파일 트리에서 다시 재니 결과가 뚜렷하다
+    /// (28코어 / NVMe):</para>
+    /// <list type="bullet">
+    /// <item>12 워커 — 78.3s (353k files/s)</item>
+    /// <item><b>24 워커 — 55.5s (499k files/s)</b></item>
+    /// <item>32 워커 — 57.8s (479k files/s) — 여기서부터 다시 나빠진다</item>
+    /// </list>
+    /// <para>작은 트리(28만 파일 0.33s → 0.34s)와 <c>C:\Windows</c>(3.53s → 3.41s)에서는 손해가 없었다.
+    /// 디렉터리가 많을수록 한 번의 열거가 짧아 대기 시간이 지배하므로, 그만큼 겹쳐 놓아야 한다.</para>
     /// </summary>
     public int ResolveWorkerCount(DriveKind kind)
     {
@@ -70,7 +80,7 @@ public sealed class ScanOptions
         return kind switch
         {
             DriveKind.Hdd => 2,
-            DriveKind.Ssd => Math.Clamp(cores, 4, 12),
+            DriveKind.Ssd => Math.Clamp(cores, 4, 24),
             _ => Math.Clamp(cores / 2, 2, 8),
         };
     }

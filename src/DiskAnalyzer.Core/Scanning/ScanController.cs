@@ -23,6 +23,17 @@ public sealed class ScanController
 
     private const int PublishIntervalMs = 150;
 
+    /// <summary>
+    /// 폴더 목록 스냅샷 주기. 폴더 수에 따라 늘린다 — 스냅샷 한 번의 비용이 폴더 수에 비례하기 때문이다.
+    /// 화면의 숫자는 계속 150ms 로 흐르므로 "멈춘 것처럼" 보이지는 않는다.
+    /// </summary>
+    private static int ViewIntervalFor(int directoryCount) => directoryCount switch
+    {
+        > 1_000_000 => 1000,
+        > 200_000 => 400,
+        _ => PublishIntervalMs,
+    };
+
     private volatile ProgressBox _progress = new(ScanProgress.Empty);
     private volatile ViewSnapshot? _liveView;
     private volatile ScanResult? _result;
@@ -217,6 +228,7 @@ public sealed class ScanController
     {
         long files = 0, dirs = 0, bytes = 0;
         var lastPublish = Stopwatch.StartNew();
+        var lastViewPublish = Stopwatch.StartNew();
 
         try
         {
@@ -247,8 +259,19 @@ public sealed class ScanController
                     if (lastPublish.ElapsedMilliseconds >= PublishIntervalMs)
                     {
                         lastPublish.Restart();
+
+                        // 숫자(파일 수 · 속도 · 큐 길이)는 싸니까 항상 150ms 로 갱신한다.
                         PublishRunning(stats, sw, rootPath, volumeUsed, files, dirs, bytes, options);
-                        PublishView(store, Volatile.Read(ref _liveViewDirId), partial: true, includeFiles: false);
+
+                        // 폴더 목록 스냅샷은 비싸다 - 롤업 2패스 + 자식 조회 1패스가 모두 O(폴더 수)다.
+                        // 폴더가 180만 개면 한 번에 500만 번을 돌게 되고, 그동안 Aggregator 가
+                        // 결과 채널을 비우지 못해 워커 전체가 backpressure 로 멈춰 선다.
+                        // 그래서 트리가 커질수록 이쪽만 간격을 늘린다(숫자는 그대로 흐른다).
+                        if (lastViewPublish.ElapsedMilliseconds >= ViewIntervalFor(store.DirectorySlots))
+                        {
+                            lastViewPublish.Restart();
+                            PublishView(store, Volatile.Read(ref _liveViewDirId), partial: true, includeFiles: false);
+                        }
                     }
                 }
             }
