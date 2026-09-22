@@ -130,6 +130,21 @@
 
             <Grid Margin="0,0,0,12">
                 <StackPanel Orientation="Horizontal">
+                    <!-- 저장소 사이드바 토글. 글리프 대신 도형으로 그린다 - 아이콘 글꼴이 없는 환경에서
+                         네모(tofu)로 깨지지 않고, 테마 색을 그대로 따라간다. -->
+                    <Button x:Name="SidebarToggle" Click="OnToggleSidebar"
+                            Margin="0,0,12,0" Padding="8,6" VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="SidebarToggle"
+                            AutomationProperties.Name="저장소 사이드바 접기 / 펼치기"
+                            ToolTip="저장소 사이드바 접기 / 펼치기">
+                        <Grid Width="17" Height="14">
+                            <Border CornerRadius="3" BorderThickness="1.4"
+                                    BorderBrush="{DynamicResource TextBrush}" />
+                            <Border x:Name="SidebarToggleFill" Width="5" HorizontalAlignment="Left"
+                                    Margin="1.4" CornerRadius="1.5,0,0,1.5"
+                                    Background="{DynamicResource TextBrush}" />
+                        </Grid>
+                    </Button>
                     <TextBlock Text="Disk Analyzer" Style="{StaticResource H1}" VerticalAlignment="Center" />
                     <TextBlock x:Name="ElevationHint" Style="{StaticResource Caption}" Margin="12,0,0,0"
                                VerticalAlignment="Center" Foreground="{DynamicResource WarningBrush}" />
@@ -155,74 +170,6 @@
                     <ToggleButton Content="성능" IsChecked="{Binding ShowPerfMonitor}" />
                 </StackPanel>
             </Grid>
-
-            <!-- 4.1 드라이브 요약 -->
-            <ItemsControl x:Name="DriveCards" ItemsSource="{Binding Drives}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Style="{StaticResource Card}" Width="246" Margin="0,0,10,10" Padding="14,12"
-                                MouseLeftButtonUp="OnDriveCardClick" Cursor="Hand" Tag="{Binding}">
-                            <StackPanel>
-                                <DockPanel Margin="0,0,0,6">
-                                    <TextBlock Text="{Binding KindText}" Style="{StaticResource Caption}"
-                                               DockPanel.Dock="Right" VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding DisplayName}" Style="{StaticResource H2}"
-                                               TextTrimming="CharacterEllipsis" />
-                                </DockPanel>
-                                <TextBlock Style="{StaticResource Numeric}" FontSize="12.5" Margin="0,0,0,7">
-                                    <Run Text="{Binding UsedText, Mode=OneWay}" />
-                                    <Run Text=" / " Foreground="{DynamicResource TextDimBrush}" />
-                                    <Run Text="{Binding TotalText, Mode=OneWay}" Foreground="{DynamicResource TextMutedBrush}" />
-                                </TextBlock>
-                                <ProgressBar Value="{Binding UsedPercentValue, Mode=OneWay}" Maximum="100" Height="6" />
-                                <DockPanel Margin="0,7,0,0">
-                                    <TextBlock Text="{Binding FileSystem}" Style="{StaticResource Caption}"
-                                               DockPanel.Dock="Right" />
-                                    <TextBlock Style="{StaticResource Caption}">
-                                        <Run Text="{Binding UsedPercentText, Mode=OneWay}" /><Run Text=" 사용 · 남은 " /><Run Text="{Binding FreeText, Mode=OneWay}" />
-                                    </TextBlock>
-                                </DockPanel>
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <!-- 즐겨찾기 = 스캔 대상. 드라이브 목록에 그대로 붙어 있어서 자주 보는 폴더를
-                 매번 찾아 들어가지 않고 바로 스캔할 수 있다. -->
-            <ItemsControl x:Name="PinnedTargets" ItemsSource="{Binding PinnedTargets}"
-                          AutomationProperties.AutomationId="PinnedTargets">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Style="{StaticResource Card}" Width="246" Margin="0,0,10,10" Padding="14,10"
-                                Cursor="Hand" Tag="{Binding Path}" MouseLeftButtonUp="OnPinnedCardClick"
-                                ToolTip="{Binding Path}">
-                            <DockPanel>
-                                <TextBlock Text="&#x2605;" DockPanel.Dock="Left" Margin="0,0,8,0"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource WarningBrush}" />
-                                <Button DockPanel.Dock="Right" Content="스캔" Padding="10,2" Margin="8,0,0,0"
-                                        Tag="{Binding Path}" Click="OnPinnedScan" />
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Path}" Style="{StaticResource Caption}"
-                                               TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
-                            </DockPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
 
             <!-- 5. 스캔 진행 상태 -->
             <Border Style="{StaticResource Card}" Margin="0,2,0,12" Padding="16,13"
@@ -265,8 +212,85 @@
 
         <!-- ================= 본문 ================= -->
         <Grid Margin="16,0,16,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="SidebarColumn" Width="Auto" />
+                <ColumnDefinition Width="*" MinWidth="520" />
+            </Grid.ColumnDefinitions>
 
-            <Border Style="{StaticResource Card}" Padding="0">
+            <!-- 4.1 저장소 사이드바. 드라이브와 고정한 스캔 대상이 세로로 쌓인다.
+                 위쪽 가로 띠에 두면 스캔 결과가 보이는 높이를 늘 빼앗아 간다 —
+                 왼쪽에 세우고 접을 수 있게 하면 필요할 때만 자리를 쓴다. -->
+            <Border x:Name="Sidebar" Grid.Column="0" Style="{StaticResource Card}" Padding="0"
+                    Width="264" Margin="0,0,10,0">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="저장소" Style="{StaticResource H2}"
+                               Margin="14,11,14,8" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                  Padding="14,0,14,4">
+                        <StackPanel>
+                        <!-- 4.1 드라이브 요약 -->
+                        <ItemsControl x:Name="DriveCards" ItemsSource="{Binding Drives}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Card}" Margin="0,0,0,10" Padding="14,12"
+                                            MouseLeftButtonUp="OnDriveCardClick" Cursor="Hand" Tag="{Binding}">
+                                        <StackPanel>
+                                            <DockPanel Margin="0,0,0,6">
+                                                <TextBlock Text="{Binding KindText}" Style="{StaticResource Caption}"
+                                                           DockPanel.Dock="Right" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding DisplayName}" Style="{StaticResource H2}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </DockPanel>
+                                            <TextBlock Style="{StaticResource Numeric}" FontSize="12.5" Margin="0,0,0,7">
+                                                <Run Text="{Binding UsedText, Mode=OneWay}" />
+                                                <Run Text=" / " Foreground="{DynamicResource TextDimBrush}" />
+                                                <Run Text="{Binding TotalText, Mode=OneWay}" Foreground="{DynamicResource TextMutedBrush}" />
+                                            </TextBlock>
+                                            <ProgressBar Value="{Binding UsedPercentValue, Mode=OneWay}" Maximum="100" Height="6" />
+                                            <DockPanel Margin="0,7,0,0">
+                                                <TextBlock Text="{Binding FileSystem}" Style="{StaticResource Caption}"
+                                                           DockPanel.Dock="Right" />
+                                                <TextBlock Style="{StaticResource Caption}">
+                                                    <Run Text="{Binding UsedPercentText, Mode=OneWay}" /><Run Text=" 사용 · 남은 " /><Run Text="{Binding FreeText, Mode=OneWay}" />
+                                                </TextBlock>
+                                            </DockPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- 즐겨찾기 = 스캔 대상. 드라이브 목록에 그대로 붙어 있어서 자주 보는 폴더를
+                             매번 찾아 들어가지 않고 바로 스캔할 수 있다. -->
+                        <ItemsControl x:Name="PinnedTargets" ItemsSource="{Binding PinnedTargets}"
+                                      AutomationProperties.AutomationId="PinnedTargets">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Card}" Margin="0,0,0,10" Padding="14,10"
+                                            Cursor="Hand" Tag="{Binding Path}" MouseLeftButtonUp="OnPinnedCardClick"
+                                            ToolTip="{Binding Path}">
+                                        <DockPanel>
+                                            <TextBlock Text="&#x2605;" DockPanel.Dock="Left" Margin="0,0,8,0"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource WarningBrush}" />
+                                            <Button DockPanel.Dock="Right" Content="스캔" Padding="10,2" Margin="8,0,0,0"
+                                                    Tag="{Binding Path}" Click="OnPinnedScan" />
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding Path}" Style="{StaticResource Caption}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </DockPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource Card}" Padding="0">
                 <DockPanel>
 
                     <!-- 8. 주요 탭 + 12/13. 검색 / 필터 -->
@@ -1534,7 +1558,7 @@
             </Border>
 
             <!-- ========== 47. 설정 패널 ========== -->
-            <Border Style="{StaticResource Card}" Width="330" HorizontalAlignment="Right" VerticalAlignment="Top"
+            <Border Grid.Column="1" Style="{StaticResource Card}" Width="330" HorizontalAlignment="Right" VerticalAlignment="Top"
                     Margin="0,10,10,0" Background="{DynamicResource SurfaceBrush}"
                     Visibility="{Binding ShowSettings, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
@@ -1586,7 +1610,7 @@
             </Border>
 
             <!-- ========== 43. 개발용 성능 모니터 ========== -->
-            <Border Style="{StaticResource Card}" Width="272" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+            <Border Grid.Column="1" Style="{StaticResource Card}" Width="272" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                     Margin="0,0,10,10" Opacity="0.97"
                     Visibility="{Binding ShowPerfMonitor, Converter={StaticResource BoolToVis}}">
                 <StackPanel>

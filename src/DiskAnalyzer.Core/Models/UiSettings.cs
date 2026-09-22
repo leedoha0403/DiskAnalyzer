@@ -15,6 +15,9 @@ public sealed class UiSettings
     /// </summary>
     public bool SearchGroupByPath { get; set; } = true;
 
+    /// <summary>왼쪽 저장소 사이드바를 접어 두었는가. 좁은 화면에서 한 번 접으면 계속 접힌 채로 쓰는 것이 보통이다.</summary>
+    public bool SidebarCollapsed { get; set; }
+
     /// <summary>
     /// 환경 변수 DISKANALYZER_UI_SETTINGS 가 있으면 그 경로를 쓴다 —
     /// 자동 검증 도구가 사용자의 실제 설정을 건드리지 않게 하는 통로다(quickmove.json 과 같은 규칙).

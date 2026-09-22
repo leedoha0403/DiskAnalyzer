@@ -302,9 +302,10 @@ public partial class MainWindow : Window
         CleanupPanel.Visibility = tab == LiveTab.Cleanup ? Visibility.Visible : Visibility.Collapsed;
         PlaceQuickMove(tab);
 
-        // 빠른 이동 탭과 도크가 켜진 동안에는 드라이브 카드를 접어 세로 공간을 넓힌다(드라이브 여유 공간은 각 패널이 보여 준다).
+        // 드라이브 카드는 이제 왼쪽 사이드바에 있어 세로 공간을 빼앗지 않는다.
+        // 그래서 탭에 따라 자동으로 숨기지 않고, 접고 펴는 것은 전적으로 사용자가 정한다.
+        ApplySidebar();
         bool quickTab = tab == LiveTab.QuickMove;
-        DriveCards.Visibility = quickTab || _vm.QuickMove.IsDockVisible ? Visibility.Collapsed : Visibility.Visible;
 
         // 도크는 다른 탭 오른쪽에 붙는 것이라, 빠른 이동 탭 자체에서는 이 스위치가 의미가 없다.
         DockToggle.Visibility = quickTab ? Visibility.Collapsed : Visibility.Visible;
@@ -338,6 +339,24 @@ public partial class MainWindow : Window
             SplitterColumn.Width = new GridLength(0);
             TreemapColumn.Width = treemap ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         }
+    }
+
+    /// <summary>
+    /// 왼쪽 저장소 사이드바. 접으면 자리까지 완전히 비우고, 되돌리는 곳은 헤더의 토글 아이콘 하나다
+    /// (화면 안에 접기 / 펴기 버튼이 두 군데 있으면 어느 쪽이 지금 상태인지 읽기 어렵다).
+    /// 아이콘 안쪽 칸을 채우고 비워 지금 상태를 함께 보여 준다.
+    /// </summary>
+    private void ApplySidebar()
+    {
+        bool collapsed = _vm.SidebarCollapsed;
+        Sidebar.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        SidebarToggleFill.Opacity = collapsed ? 0d : 1d;
+    }
+
+    private void OnToggleSidebar(object sender, RoutedEventArgs e)
+    {
+        _vm.SidebarCollapsed = !_vm.SidebarCollapsed;   // 상태는 ui.json 에 남는다
+        ApplySidebar();
     }
 
     private GridLength _splitFolderWidth = new(1.15, GridUnitType.Star);

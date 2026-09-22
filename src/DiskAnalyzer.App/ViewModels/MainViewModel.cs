@@ -36,6 +36,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         Options = new ScanOptions();
         _useSearchTree = _ui.SearchGroupByPath;      // 기억해 둔 값으로 시작한다(기본 켜짐)
+        _sidebarCollapsed = _ui.SidebarCollapsed;
         _exclusions = ExclusionSettings.Load();
         Options.ExclusionPatterns = _exclusions.Patterns;
         _exclusionText = _exclusions.ToText();
@@ -913,6 +914,20 @@ public sealed partial class MainViewModel : ObservableObject
             if (IsSearchMode) BuildSearchTree();
 
             _ui.SearchGroupByPath = value;
+            _ui.Save();
+        }
+    }
+
+    private bool _sidebarCollapsed;
+
+    /// <summary>왼쪽 저장소 사이드바가 접혀 있는가. 상태는 ui.json 에 남는다.</summary>
+    public bool SidebarCollapsed
+    {
+        get => _sidebarCollapsed;
+        set
+        {
+            if (!Set(ref _sidebarCollapsed, value)) return;
+            _ui.SidebarCollapsed = value;
             _ui.Save();
         }
     }
