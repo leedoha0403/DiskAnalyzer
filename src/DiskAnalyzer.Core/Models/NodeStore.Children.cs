@@ -19,6 +19,17 @@ public sealed class ChildScratch
 public sealed partial class NodeStore
 {
     /// <summary>
+    /// 폴더에 붙은 분류 플래그. <see cref="GetChildren"/> 로 형제 전체를 만들어 찾는 대신 바로 읽는다
+    /// (보호 등급 1차 판정이 이 플래그를 쓴다).
+    /// </summary>
+    public CategoryFlags GetDirectoryCategory(int dirId)
+        => (uint)dirId < (uint)_dirCount ? (CategoryFlags)_dirCat[dirId] : CategoryFlags.None;
+
+    /// <summary>파일의 확장자 분류 플래그. 같은 이유로 행을 만들지 않고 바로 읽는다.</summary>
+    public CategoryFlags GetFileCategory(int fileIndex)
+        => (uint)fileIndex < (uint)_fileCount ? Extensions.CategoryOf(_fileExt[fileIndex]) : CategoryFlags.None;
+
+    /// <summary>
     /// 여러 폴더의 직속 자식을 <b>배열 1패스</b>로 모은다.
     ///
     /// <para><see cref="GetChildren"/> 를 폴더마다 부르면 폴더 하나당 <c>_dirParent</c> 전체를 훑는다.

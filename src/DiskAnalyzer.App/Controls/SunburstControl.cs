@@ -349,10 +349,14 @@ public sealed class SunburstControl : FrameworkElement
     private void DrawCentered(DrawingContext dc, string text, double fontSize, Brush brush, double dy)
     {
         double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+
+        // 링이 없을 때는 중앙 구멍이 0 이라 구멍 폭으로 재면 문구가 통째로 잘린다.
+        double maxWidth = _geometry.Length == 0 ? Math.Max(80d, ActualWidth - 24d) : Math.Max(20d, _hole * 1.9d);
+
         var ft = new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
             _typeface!, fontSize, brush, dpi)
         {
-            MaxTextWidth = Math.Max(20d, _hole * 1.9d),
+            MaxTextWidth = maxWidth,
             Trimming = TextTrimming.CharacterEllipsis,
             MaxLineCount = 1,
         };

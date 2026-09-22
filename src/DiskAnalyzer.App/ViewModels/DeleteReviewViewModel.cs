@@ -96,6 +96,7 @@ public sealed class DeleteReviewRow : ObservableObject
             Name = item.Name,
             FullPath = item.FullPath,
             Size = item.Size,
+            Modified = LastWriteOrDefault(item.FullPath, item.IsDirectory),
             Extension = item.IsDirectory ? string.Empty : Path.GetExtension(item.FullPath),
             CategoryText = string.Empty,
             Flags = CategoryFlags.None,
@@ -103,6 +104,22 @@ public sealed class DeleteReviewRow : ObservableObject
             ProtectionReason = verdict.Reason,
             Warnings = string.Join(" \u00b7 ", Categorizer.DeleteWarnings(item.FullPath, CategoryFlags.None)),
         };
+    }
+
+    /// <summary>
+    /// 담아 둔 뒤 밖에서 바뀌었을 수 있으므로 지금 읽는다. I/O 라서 호출자가 백그라운드에서 부른다.
+    /// 읽지 못하면 빈 값으로 두고 확인 창은 수정일 칸을 비운다 — 추측한 날짜를 보여 주지 않는다.
+    /// </summary>
+    private static DateTime LastWriteOrDefault(string fullPath, bool isDirectory)
+    {
+        try
+        {
+            return isDirectory ? Directory.GetLastWriteTime(fullPath) : File.GetLastWriteTime(fullPath);
+        }
+        catch (Exception)
+        {
+            return default;
+        }
     }
 
     public static DeleteReviewRow From(CleanupCandidate c)

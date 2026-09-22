@@ -215,11 +215,11 @@ public partial class MainWindow
     private CategoryFlags CategoryOf(SunburstSegment segment, bool isDirectory)
     {
         var store = _vm.CurrentResult?.Store;
-        if (store == null || segment.Id < 0 || !isDirectory) return CategoryFlags.None;
+        if (store == null || segment.Id < 0) return CategoryFlags.None;
 
-        foreach (var row in store.GetChildren(store.GetParent(segment.Id), includeFiles: false))
-            if (row.Id == segment.Id) return row.Category;
-        return CategoryFlags.None;
+        return isDirectory
+            ? store.GetDirectoryCategory(segment.Id)
+            : store.GetFileCategory(segment.Id);
     }
 
     private static string ExplainCollect(CollectResult result, string name) => result switch
@@ -268,7 +268,9 @@ public partial class MainWindow
     /// 수집함의 삭제도 <b>기존 확인 창을 그대로 거친다</b>. 수집함은 "고르는 곳"이지 "지우는 곳"이 아니다.
     /// 성공한 것만 수집함에서 빠지고 실패한 것은 남아 다시 시도할 수 있다.
     /// </summary>
-    private void OnCollectorDelete(object sender, RoutedEventArgs e)
+    private void OnCollectorDelete(object sender, RoutedEventArgs e) => _ = DeleteCollectedAsync();
+
+    private async Task DeleteCollectedAsync()
     {
         var items = _vm.Collector.Items;
         if (items.Count == 0)
@@ -277,10 +279,14 @@ public partial class MainWindow
             return;
         }
 
-        var before = items.Select(i => i.FullPath).ToList();
-        ShowDeleteReview(items.Select(DeleteReviewRow.From));
+        // 보호 등급 재판정과 수정일 조회는 I/O 다. 창이 뜨기 전에 멈춘 것처럼 보이지 않게 백그라운드에서 만든다.
+        _vm.StatusMessage = $"{items.Count:N0}개 항목의 삭제 가능 여부를 확인하는 중...";
+        var rows = await Task.Run(() => items.Select(DeleteReviewRow.From).ToList()).ConfigureAwait(true);
 
-        // 확인 창이 모델에서 지운 것을 그대로 걷어낸다.
+        var before = items.Select(i => i.FullPath).ToList();
+        ShowDeleteReview(rows);
+
+        // 실제로 사라진 것만 걷어낸다. 실패한 것은 남겨 다시 시도할 수 있게 둔다.
         _vm.Collector.RemoveMany(before.Where(p => !File.Exists(p) && !Directory.Exists(p)));
         RefreshCollectorView();
         UpdateSunburst();
