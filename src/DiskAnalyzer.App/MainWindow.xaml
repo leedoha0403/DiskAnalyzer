@@ -19,15 +19,15 @@
 
         <!-- 15. 파일 / 폴더 우클릭 메뉴 -->
         <ContextMenu x:Key="RowMenu" x:Shared="False" Opened="OnRowMenuOpened">
-            <MenuItem Header="탐색기에서 열기" Click="OnOpenExplorer" />
-            <MenuItem Header="경로 복사" Click="OnCopyPath" />
+            <MenuItem Header="탐색기에서 열기" Click="OnOpenExplorer" km:ShortcutHint.Command="Selection.Open" />
+            <MenuItem Header="경로 복사" Click="OnCopyPath" km:ShortcutHint.Command="Clipboard.CopyPath" />
             <MenuItem Header="파일명 복사" Click="OnCopyName" />
-            <MenuItem Header="속성 보기" Click="OnShowProperties" />
+            <MenuItem Header="속성 보기" Click="OnShowProperties" km:ShortcutHint.Command="Selection.ShowDetails" />
             <!-- 49. 검색 결과 / 큰 파일에서 찾은 것을 폴더 탭(과 Treemap)의 그 위치로 데려간다 -->
             <MenuItem Tag="reveal" Header="이 항목이 있는 폴더 열기" Click="OnRevealRow"
                       ToolTip="폴더 탭을 이 항목이 있는 폴더로 옮기고 항목을 선택합니다. Treemap 도 같은 위치로 따라갑니다" />
             <MenuItem Tag="fav" Header="즐겨찾기에 추가" Click="OnRowFavorite" />
-            <MenuItem Header="수집함에 담기" Click="OnRowCollect" />
+            <MenuItem Header="수집함에 담기" Click="OnRowCollect" km:ShortcutHint.Command="Selection.ToggleCollect" />
             <Separator />
             <MenuItem Header="이동 (좌) - 빠른 이동 출발지로 보내기" Click="OnSendLeft"
                       ToolTip="빠른 이동 도크의 출발지(위) 패널에서 이 항목을 선택해 둡니다. 탭을 벗어나지 않습니다" />
@@ -36,8 +36,8 @@
             <MenuItem Header="이동 대기열에 추가 (현재 목적지로)" Click="OnSendQueue"
                       ToolTip="목적지를 한 번 정해 두면, 이 항목들을 바로 이동 대기열에 담습니다" />
             <Separator />
-            <MenuItem Header="휴지통으로 이동" Click="OnRecycle" />
-            <MenuItem Header="영구 삭제" Click="OnDeletePermanently" />
+            <MenuItem Header="휴지통으로 이동" Click="OnRecycle" km:ShortcutHint.Command="Selection.Delete" />
+            <MenuItem Header="영구 삭제" Click="OnDeletePermanently" km:ShortcutHint.Command="Selection.DeletePermanent" />
         </ContextMenu>
 
         <!-- 6. 폴더 테이블 셀 템플릿 -->
@@ -136,7 +136,8 @@
                             Margin="0,0,12,0" Padding="8,6" VerticalAlignment="Center"
                             AutomationProperties.AutomationId="SidebarToggle"
                             AutomationProperties.Name="저장소 사이드바 접기 / 펼치기"
-                            ToolTip="저장소 사이드바 접기 / 펼치기">
+                            km:ShortcutHint.Command="View.ToggleSidebar"
+                            km:ShortcutHint.Text="저장소 사이드바 접기 / 펼치기 {0}">
                         <Grid Width="17" Height="14">
                             <Border CornerRadius="3" BorderThickness="1.4"
                                     BorderBrush="{DynamicResource TextBrush}" />
@@ -158,16 +159,21 @@
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Content="선택 드라이브 스캔" Style="{StaticResource AccentButton}"
-                            Command="{Binding ScanSelectedCommand}" Margin="0,0,8,0" />
-                    <Button Content="전체 스캔" Command="{Binding ScanAllCommand}" Margin="0,0,8,0" />
+                            Command="{Binding ScanSelectedCommand}" Margin="0,0,8,0"
+                            ToolTip="왼쪽 사이드바에서 고른 드라이브를 스캔합니다&#10;드라이브 카드를 더블 클릭해도 같습니다" />
+                    <Button Content="전체 스캔" Command="{Binding ScanAllCommand}" Margin="0,0,8,0"
+                            ToolTip="연결된 모든 드라이브를 차례로 스캔합니다" />
                     <Button Content="새로고침" Command="{Binding RefreshCommand}" Margin="0,0,8,0"
                             km:ShortcutHint.Command="View.ForceRescan" km:ShortcutHint.Text="현재 위치를 다시 스캔합니다" />
-                    <Button Content="스캔 중지" Command="{Binding CancelCommand}" Margin="0,0,16,0" />
+                    <Button Content="스캔 중지" Command="{Binding CancelCommand}" Margin="0,0,16,0"
+                            ToolTip="진행 중인 스캔을 멈춥니다&#10;그때까지 읽은 결과는 남습니다" />
                     <ToggleButton x:Name="DockToggle" Content="이동 도크" IsChecked="{Binding QuickMove.IsDockVisible}" Margin="0,0,8,0"
                                   AutomationProperties.AutomationId="DockToggle"
                                   ToolTip="화면 오른쪽에 '빠른 이동' 도크를 붙입니다. 폴더 / Treemap 을 보면서 출발지(위)·목적지(아래)를 함께 볼 수 있습니다" />
-                    <ToggleButton Content="설정" IsChecked="{Binding ShowSettings}" Margin="0,0,8,0" />
-                    <ToggleButton Content="성능" IsChecked="{Binding ShowPerfMonitor}" />
+                    <ToggleButton Content="설정" IsChecked="{Binding ShowSettings}" Margin="0,0,8,0"
+                                  ToolTip="스캔 방식 · 테마 · 제외 규칙 · 내보내기&#10;맨 아래 [단축키 설정...] 에서 모든 단축키를 바꿀 수 있습니다" />
+                    <ToggleButton Content="성능" IsChecked="{Binding ShowPerfMonitor}"
+                                  ToolTip="스캔 속도 · 워커 수 · 큐 길이 · 메모리를 실시간으로 봅니다" />
                 </StackPanel>
             </Grid>
 
@@ -233,7 +239,8 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Style="{StaticResource Card}" Margin="0,0,0,10" Padding="14,12"
-                                            MouseLeftButtonUp="OnDriveCardClick" Cursor="Hand" Tag="{Binding}">
+                                            MouseLeftButtonUp="OnDriveCardClick" Cursor="Hand" Tag="{Binding}"
+                                            ToolTip="누르면 이 드라이브를 고르고, 더블 클릭하면 바로 스캔합니다">
                                         <StackPanel>
                                             <DockPanel Margin="0,0,0,6">
                                                 <TextBlock Text="{Binding KindText}" Style="{StaticResource Caption}"
@@ -274,7 +281,8 @@
                                                        VerticalAlignment="Center"
                                                        Foreground="{DynamicResource WarningBrush}" />
                                             <Button DockPanel.Dock="Right" Content="스캔" Padding="10,2" Margin="8,0,0,0"
-                                                    Tag="{Binding Path}" Click="OnPinnedScan" />
+                                                    Tag="{Binding Path}" Click="OnPinnedScan"
+                                                    ToolTip="이 폴더를 다시 스캔합니다" />
                                             <StackPanel VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                                                 <TextBlock Text="{Binding Path}" Style="{StaticResource Caption}"
@@ -302,12 +310,10 @@
                     <!-- 8. 주요 탭 + 12/13. 검색 / 필터 -->
                     <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource BorderBrushSoft}"
                             BorderThickness="0,0,0,1" Padding="14,6,14,0">
-                        <Grid>
-                            <!-- 탭과 필터는 같은 줄을 나눠 쓴다. 겹쳐 두면 탭이 늘어날 때 글자가 서로 올라탄다. -->
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
+                        <!-- 탭과 필터가 한 줄에 다 안 들어가면 필터가 아랫줄로 내려간다.
+                             칸(Grid)으로 나눠 두었을 때는 폭이 모자라면 마지막 칸이 그냥 잘려서
+                             [검색] [지우기] 가 화면에서 사라졌다 - 줄이 늘어나는 편이 낫다. -->
+                        <WrapPanel>
                             <TabControl x:Name="Tabs" SelectionChanged="OnTabChanged" HorizontalAlignment="Left">
                                 <TabItem Header="폴더" />
                                 <TabItem Header="Treemap" />
@@ -318,15 +324,9 @@
                                 <TabItem Header="빠른 이동" AutomationProperties.AutomationId="QuickMoveTab" />
                             </TabControl>
 
-                            <!-- 필터 + 검색. 탭이 늘어나도 서로 올라타지 않도록 칸으로 나누고,
-                                 폭이 모자라면 검색 상자만 줄어든다(고정폭 StackPanel 은 잘려 나갔다). -->
-                            <Grid x:Name="FilterBar" Grid.Column="1" Margin="12,0,0,6" VerticalAlignment="Center">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" MinWidth="96" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
+                            <!-- 필터 + 검색. 자연 크기로 두고, 한 줄에 안 들어가면 통째로 아랫줄로 내려간다. -->
+                            <StackPanel x:Name="FilterBar" Orientation="Horizontal"
+                                        Margin="12,0,0,6" VerticalAlignment="Center">
 
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock Text="크기" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="0,0,6,0" />
@@ -351,15 +351,16 @@
                                             </TextBlock.Style>
                                         </TextBlock>
                                     </Grid>
-                                    <Button Content="적용" Command="{Binding ApplyFilterCommand}" Margin="0,0,14,0" />
+                                    <Button Content="적용" Command="{Binding ApplyFilterCommand}" Margin="0,0,14,0"
+                                            ToolTip="왼쪽의 크기 · 확장자 조건을 목록에 적용합니다&#10;스캔을 다시 하지는 않습니다" />
                                 </StackPanel>
 
-                                <ComboBox Grid.Column="1" ItemsSource="{Binding SearchScopeOptions}"
+                                <ComboBox ItemsSource="{Binding SearchScopeOptions}"
                                           SelectedItem="{Binding SelectedSearchScope}"
                                           Width="112" Margin="0,0,6,0" VerticalAlignment="Center"
                                           ToolTip="검색 범위 - '현재 폴더 하위'는 지금 보고 있는 폴더 안에서만 찾습니다" />
 
-                                <Grid Grid.Column="2" Margin="0,0,6,0" VerticalAlignment="Center">
+                                <Grid Width="186" Margin="0,0,6,0" VerticalAlignment="Center">
                                     <TextBox x:Name="SearchBox"
                                              Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                              KeyDown="OnSearchKeyDown"
@@ -381,9 +382,13 @@
                                     </TextBlock>
                                 </Grid>
 
-                                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Button Content="검색" Command="{Binding SearchCommand}" Margin="0,0,6,0" />
-                                    <Button Content="지우기" Command="{Binding ClearSearchCommand}" />
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Content="검색" Command="{Binding SearchCommand}" Margin="0,0,6,0"
+                                            km:ShortcutHint.Command="Search.Focus"
+                                            km:ShortcutHint.Text="입력한 이름으로 찾습니다 {0}&#10;검색 상자에서 Enter 를 눌러도 됩니다" />
+                                    <Button Content="지우기" Command="{Binding ClearSearchCommand}"
+                                            km:ShortcutHint.Command="Search.Cancel"
+                                            km:ShortcutHint.Text="검색을 지우고 원래 목록으로 돌아갑니다 {0}" />
 
                                     <!-- 49. 검색 결과가 같은 이름으로 가득 찰 때 폴더 트리로 묶어 본다. 검색 중에만 뜬다. -->
                                     <CheckBox Content="경로별 묶기" IsChecked="{Binding UseSearchTree}" Margin="14,0,0,0"
@@ -395,8 +400,8 @@
                                                VerticalAlignment="Center" Margin="10,0,0,0"
                                                Visibility="{Binding HasSearchFoldSummary, Converter={StaticResource BoolToVis}}" />
                                 </StackPanel>
-                            </Grid>
-                        </Grid>
+                            </StackPanel>
+                        </WrapPanel>
                     </Border>
 
                     <!-- 폴더 / Treemap 이 함께 쓰는 이동 막대: 뒤로·앞으로·상위·루트 · 경로(빈 곳을 누르면 직접 입력) · 변경 감지 · 이 폴더 새로고침 · 즐겨찾기 -->
@@ -625,9 +630,12 @@
                                     AutomationProperties.AutomationId="CollectorDelete"
                                     Click="OnCollectorDelete" Margin="8,0,0,0" Padding="14,3"
                                     IsEnabled="{Binding HasCollected}"
-                                    ToolTip="담긴 항목을 삭제 대상 확인 창으로 넘깁니다. 여기서도 즉시 지우지 않습니다." />
+                                    km:ShortcutHint.Command="Selection.Delete"
+                                    km:ShortcutHint.Text="담긴 항목을 삭제 대상 확인 창으로 넘깁니다 {0}&#10;여기서도 즉시 지우지 않습니다" />
                             <Button DockPanel.Dock="Right" Content="비우기" Click="OnCollectorClear"
-                                    Margin="8,0,0,0" Padding="12,3" IsEnabled="{Binding HasCollected}" />
+                                    Margin="8,0,0,0" Padding="12,3" IsEnabled="{Binding HasCollected}"
+                                    km:ShortcutHint.Command="Collector.Clear"
+                                    km:ShortcutHint.Text="담긴 것을 모두 뺍니다(파일은 그대로입니다) {0}" />
                             <Button DockPanel.Dock="Right" Content="대기열로" Click="OnCollectorToQueue"
                                     AutomationProperties.AutomationId="CollectorToQueue"
                                     Margin="8,0,0,0" Padding="12,3" IsEnabled="{Binding HasCollected}"
@@ -709,6 +717,8 @@
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                             <Button Content="선택 해제" Click="OnClearFolderSelection" Margin="0,0,8,0" />
                                             <Button Content="삭제..." AutomationProperties.AutomationId="FolderDelete"
+                                                    km:ShortcutHint.Command="Selection.Delete"
+                                                    km:ShortcutHint.Text="고른 항목을 삭제 확인 창으로 넘깁니다 {0}"
                                                     Style="{StaticResource AccentButton}"
                                                     Click="OnDeleteSelectedFolderItems" />
                                         </StackPanel>
@@ -796,7 +806,7 @@
                                     <ctl:TreemapControl.ContextMenu>
                                         <ContextMenu Opened="OnTreemapMenuOpened">
                                             <MenuItem x:Name="TmOpenExplorer" Header="탐색기에서 열기" Click="OnTreemapOpenExplorer" />
-                                            <MenuItem x:Name="TmCopyPath" Header="경로 복사" Click="OnTreemapCopyPath" />
+                                            <MenuItem x:Name="TmCopyPath" Header="경로 복사" Click="OnTreemapCopyPath" km:ShortcutHint.Command="Clipboard.CopyPath" />
                                             <MenuItem x:Name="TmFavorite" Header="즐겨찾기에 추가" Click="OnTreemapFavorite" />
                                             <Separator x:Name="TmSeparator" />
                                             <MenuItem x:Name="TmSendLeft" Header="이동 (좌) - 빠른 이동 출발지로 보내기" Click="OnTreemapSendLeft" />
@@ -899,9 +909,9 @@
                                                  CollectedBrush="{DynamicResource BarFillStrongBrush}">
                                 <ctl:SunburstControl.ContextMenu>
                                     <ContextMenu Opened="OnSunburstMenuOpened">
-                                        <MenuItem x:Name="SbCollect" Header="수집함에 담기" Click="OnSunburstCollect" />
+                                        <MenuItem x:Name="SbCollect" Header="수집함에 담기" Click="OnSunburstCollect" km:ShortcutHint.Command="Selection.ToggleCollect" />
                                         <MenuItem x:Name="SbOpenExplorer" Header="탐색기에서 열기" Click="OnSunburstOpenExplorer" />
-                                        <MenuItem x:Name="SbCopyPath" Header="경로 복사" Click="OnSunburstCopyPath" />
+                                        <MenuItem x:Name="SbCopyPath" Header="경로 복사" Click="OnSunburstCopyPath" km:ShortcutHint.Command="Clipboard.CopyPath" />
                                         <Separator />
                                         <MenuItem x:Name="SbFavorite" Header="즐겨찾기에 추가" Click="OnSunburstFavorite" />
                                     </ContextMenu>
@@ -944,6 +954,8 @@
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <Button Content="선택 해제" Click="OnClearLargeFileSelection" Margin="0,0,8,0" />
                                         <Button Content="삭제..." AutomationProperties.AutomationId="LargeFileDelete"
+                                                km:ShortcutHint.Command="Selection.Delete"
+                                                km:ShortcutHint.Text="고른 항목을 삭제 확인 창으로 넘깁니다 {0}"
                                                 Style="{StaticResource AccentButton}"
                                                 Click="OnDeleteSelectedLargeFiles" />
                                     </StackPanel>

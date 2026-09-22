@@ -204,7 +204,9 @@
                               ToolTip="숨김/시스템 속성 파일을 목록에 표시합니다. 보호 정책은 그대로 적용됩니다." />
                     <Button x:Name="CompactStartButton" Grid.Column="3" Content="이동 시작" Command="{Binding StartCommand}"
                             Style="{StaticResource AccentButton}" Padding="12,4" Margin="0,0,4,0" Visibility="Collapsed"
-                            AutomationProperties.AutomationId="DockStartMove" />
+                            AutomationProperties.AutomationId="DockStartMove"
+                            km:ShortcutHint.Command="QuickMove.Start"
+                            km:ShortcutHint.Text="대기열에 쌓인 항목을 실제로 옮깁니다 {0}" />
                     <Button x:Name="QueueToggleButton" Grid.Column="4" Command="{Binding ToggleQueueCollapsedCommand}" Style="{StaticResource LinkButton}"
                             Width="30" ToolTip="대기열 접기 / 펼치기" AutomationProperties.AutomationId="QueueToggle">
                         <TextBlock FontSize="13">
