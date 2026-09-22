@@ -40,6 +40,20 @@ public partial class MainWindow
 
         SunburstInfo.Text = SunburstHint;
         RefreshCollectorView();
+        _vm.RefreshPinnedTargets();
+    }
+
+    /// <summary>고정한 폴더 카드: 한 번 누르면 경로로 이동, 두 번이면 스캔(드라이브 카드와 같은 규칙).</summary>
+    private void OnPinnedCardClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string path }) return;
+        if (e.ClickCount >= 2) _vm.StartScan(path);
+        else _vm.NavigateToPath(path);
+    }
+
+    private void OnPinnedScan(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string path }) _vm.StartScan(path);
     }
 
     /// <summary>

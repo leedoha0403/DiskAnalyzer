@@ -341,6 +341,7 @@ public sealed class PathBarViewModel : ObservableObject
 
     private void RaiseFavoriteState()
     {
+        _owner.RefreshPinnedTargets();
         Raise(nameof(IsCurrentFavorite));
         ToggleFavoriteCommand.RaiseCanExecuteChanged();
         BeginEditCommand.RaiseCanExecuteChanged();

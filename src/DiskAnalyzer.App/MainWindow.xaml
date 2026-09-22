@@ -193,6 +193,37 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
+            <!-- 즐겨찾기 = 스캔 대상. 드라이브 목록에 그대로 붙어 있어서 자주 보는 폴더를
+                 매번 찾아 들어가지 않고 바로 스캔할 수 있다. -->
+            <ItemsControl x:Name="PinnedTargets" ItemsSource="{Binding PinnedTargets}"
+                          AutomationProperties.AutomationId="PinnedTargets">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Style="{StaticResource Card}" Width="246" Margin="0,0,10,10" Padding="14,10"
+                                Cursor="Hand" Tag="{Binding Path}" MouseLeftButtonUp="OnPinnedCardClick"
+                                ToolTip="{Binding Path}">
+                            <DockPanel>
+                                <TextBlock Text="&#x2605;" DockPanel.Dock="Left" Margin="0,0,8,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource WarningBrush}" />
+                                <Button DockPanel.Dock="Right" Content="스캔" Padding="10,2" Margin="8,0,0,0"
+                                        Tag="{Binding Path}" Click="OnPinnedScan" />
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Path}" Style="{StaticResource Caption}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
             <!-- 5. 스캔 진행 상태 -->
             <Border Style="{StaticResource Card}" Margin="0,2,0,12" Padding="16,13"
                     Visibility="{Binding IsScanning, Converter={StaticResource BoolToVis}}">

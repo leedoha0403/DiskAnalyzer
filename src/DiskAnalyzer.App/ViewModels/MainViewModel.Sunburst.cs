@@ -30,8 +30,24 @@ public sealed class SunburstSidebarRow
     public bool CanNavigate => IsDirectory && Id >= 0;
 }
 
+/// <summary>드라이브 목록에 고정된 스캔 대상 하나.</summary>
+public sealed record PinnedTarget(string Name, string Path);
+
 public sealed partial class MainViewModel
 {
+    // ---------------------------------------------------------------- 고정한 스캔 대상
+
+    /// <summary>드라이브 목록 옆에 고정된 폴더. 즐겨찾기와 같은 목록이다(따로 관리하지 않는다).</summary>
+    public ObservableCollection<PinnedTarget> PinnedTargets { get; } = [];
+
+    /// <summary>즐겨찾기가 바뀔 때마다 다시 만든다. 없어진 폴더는 여기서도 함께 빠진다.</summary>
+    public void RefreshPinnedTargets()
+    {
+        PinnedTargets.Clear();
+        foreach (var f in PathBar.GetFavorites())
+            PinnedTargets.Add(new PinnedTarget(f.Name, f.Path));
+    }
+
     /// <summary>
     /// 수집함. 탭·폴더와 무관하게 살아 있다 — 어디를 돌아다니며 담아도 목록과 합계가 남는다.
     /// </summary>

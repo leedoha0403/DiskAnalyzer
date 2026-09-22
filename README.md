@@ -7,6 +7,8 @@ Windows 10/11 용 디스크 용량 분석 프로그램. WizTree / TreeSize 와 �
 - 솔루션: `DiskAnalyzer.sln`
 - **배포용 실행 파일: `dist/DiskAnalyzer.exe`** — 단일 파일 · 자체 포함(.NET 설치 불필요), 그대로 복사해서 실행
   - `src/.../bin/Release/` 쪽 exe 는 옆의 DLL 과 .NET 9 Desktop Runtime 이 있어야 동작한다
+- **DaisyDisk 분석 · 비교: [`docs/daisydisk.html`](docs/daisydisk.html)** — 선버스트 모델 역공학(색 = 각도의 함수),
+  수집함 · 숨은 공간 모델, 이 프로젝트와의 기능/비주얼 차이와 반영 내역. 라이브 데모 포함
 - **설명서(HTML): [`docs/index.html`](docs/index.html)** — 사용법 · 동작 원리 · 성능 수치와 draw.io 다이어그램 6개
   (그림은 인터넷 연결이 필요하며, 원본은 `docs/diagrams/*.drawio`. 고친 뒤 `python docs/build.py` 로 다시 만든다)
 
@@ -17,7 +19,8 @@ Windows 10/11 용 디스크 용량 분석 프로그램. WizTree / TreeSize 와 �
 ```
 ┌───────────────────────────────────────────────────────────┐
 │ DiskAnalyzer.App (WPF)                                    │
-│   Views(XAML) / ViewModels / Controls(RatioBar, Treemap)  │
+│   Views(XAML) / ViewModels                                │
+│   Controls(RatioBar, Treemap, Sunburst) / CollectorBar    │
 └───────────────┬───────────────────────────────────────────┘
                 │ 150ms DispatcherTimer 로 "당겨 읽기"(pull)
 ┌───────────────▼───────────────────────────────────────────┐
@@ -29,11 +32,14 @@ Windows 10/11 용 디스크 용량 분석 프로그램. WizTree / TreeSize 와 �
 │              ▼                                            │
 │   NodeStore (SoA + StringPool + TopKHeap + ExtensionTable)│
 │              ▼                                            │
+│   SunburstLayout  각도 배분 + 작은 항목 접기 (겹 단위)     │
+│   SpaceLedger     사용량 − 스캔 합계 = 숨은 공간           │
 │   ProtectionEvaluator     P0~P3  "삭제해도 되는가"         │
 │   CleanupScorer           0~100  "삭제할 가치가 있는가"     │
 │   CleanupAnalyzer / CleanupGrouper / DeveloperAnalyzer     │
 │   Services: DriveService / CacheService / ExportService /  │
 │             ShellService / FileVerifier / DeletionService │
+│             Collector (삭제 대기 바구니, 탐색과 무관)      │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -105,7 +111,7 @@ for (int i = n - 1; i > 0; i--) {          // 폴더 크기 롤업 = 역순 1패
 
 ## 5. UI 구조
 
-- 탭: **폴더 / Treemap / 큰 파일 / 파일 유형 / 정리 추천 / 빠른 이동**
+- 탭: **폴더 / Treemap / 선버스트 / 큰 파일 / 파일 유형 / 정리 추천 / 빠른 이동**
 - 드라이브 카드(용량·사용률·파일시스템), 실시간 진행 패널, 상태바, 설정 패널, 성능 모니터
 - **폴더 탭 / 큰 파일 탭**: Ctrl / Shift 다중 선택 + 선택 요약 + 일괄 삭제 (+ 큰 파일 탭은 새로고침)
   - 폴더를 선택하면 **하위 전체**가 삭제 대상이 되고, 확인 창이 하위까지 훑어 보호 등급을 매긴다
@@ -135,6 +141,27 @@ for (int i = n - 1; i > 0; i--) {          // 폴더 크기 롤업 = 역순 1패
   - 대기열이 비어 있으면 자동으로 접혀 폴더 목록이 넓게 보이고, 목록 이름 열은 창 너비에 맞춰 늘어난다
   - **빠른 이동 도크**: 폴더 / Treemap / 큰 파일 등 분석 탭 오른쪽에 붙는 좁은 배치(출발지 위 · 목적지 아래). 화면 인스턴스가 탭과 같아서 선택·대기열이 이어진다.
     폴더 목록·Treemap 우클릭 → **이동 (좌)**(출발지에서 선택) / **이동 (우)**(목적지로 열기) / **이동 대기열에 추가**(현재 목적지로 바로 담기). 탭을 벗어나지 않는다
+- **선버스트 탭** (`Controls/SunburstControl.cs`, 엔진은 `Core/Analysis/SunburstLayout.cs`):
+  각도 = 비율인 동심원 5겹. 폴더 · Treemap 과 **같은 위치 상태**를 쓴다
+  - **가리키면 읽고, 누르면 들어가고, 가운데를 누르면 나온다.** 조각을 가리키면 이동하지 않고
+    오른쪽 목록이 그 폴더 내용으로 바뀐다(훑는 데 클릭 비용이 0). 누르면 진입, 가운데 원은 상위
+  - **색은 위치에서 나온다** — 조각의 색조 = `4° + 0.75 × 각도`(한 바퀴에 0°→270°).
+    부모·자식이 저절로 같은 계열이 되고, 이웃이 같은 색이 될 수 없으며, 목록의 색 점이 링과 자동으로 맞는다.
+    파일은 회색. DaisyDisk 제품 스크린샷을 극좌표로 샘플링해 얻은 규칙이다(`docs/daisydisk.html` 3.2)
+  - **작은 항목을 버리지 않는다.** 너무 얇은 조각은 `작은 항목 N개` 하나로 합쳐 남은 각도를 정확히 채운다
+    (Treemap 은 1px 미만이면 조용히 빠뜨려 그림의 합이 100%가 되지 않았다)
+  - 조각에 이름을 쓰지 않는다 → 텍스트 렌더링 0. 각도는 탐색할 때만, 반지름은 크기가 바뀔 때만 다시 만든다(`Freeze`)
+  - 드라이브 루트 스캔이면 목록 아래에 **숨은 공간**(`SpaceLedger` = 사용량 − 스캔 합계)과 **여유 공간**이 붙는다
+  - 스캔 중에는 게시된 스냅샷으로 **한 겹**만 그린다(NodeStore 를 UI 스레드가 타고 내려가지 않는다)
+- **수집함** (`Core/Services/Collector.cs`): 모든 탭 아래에 붙는 삭제 대기 바구니.
+  **탐색과 무관하게 유지**되므로 폴더를 옮겨 다니며 모아 한 번에 지울 수 있다
+  - 담기: 링에서 아래로 끌기 / 가운데 버튼 / 우클릭 / `Ctrl+Delete`(목록에서는 고른 줄 전체)
+  - **P0 는 담기지 않는다** — 확인 창에서 거르는 것이 아니라 담는 순간 막고 이유를 알린다
+  - **조상이 담기면 자손은 빠진다** — 합계가 두 번 세어지지 않는다. 접두사 비교는 구분자까지 봐서
+    `D:\Data2` 를 `D:\Data` 의 자손으로 오인하지 않는다
+  - `[삭제...]` 는 **기존 삭제 확인 창을 그대로 거친다.** 수집함은 고르는 곳이지 지우는 곳이 아니다
+- **떨어뜨려 스캔 · 고정한 스캔 대상**: 탐색기에서 폴더를 창에 떨어뜨리면 그 대상을 스캔한다.
+  즐겨찾기(`Ctrl+D`)는 드라이브 카드 아래에 ★ 카드로 남아 바로 다시 스캔할 수 있다
 - **검색**: `*` `?` 와일드카드 지원(없으면 부분 일치), 범위는 "전체 / 현재 폴더 하위", 결과는 크기 상위 5,000건과 전체 건수를 표시
 - 관리자 권한이 아니면 헤더에 **[관리자 권한으로 다시 실행]** 버튼이 뜬다(UAC 승인 후 같은 경로를 다시 스캔)
 - 정리 추천 탭: 보기 방식 5종(기본 **폴더 트리 + 반복 패턴 접기**) + 그룹 3단계 체크박스 + 다시 분석
@@ -144,7 +171,8 @@ for (int i = n - 1; i > 0; i--) {          // 폴더 크기 롤업 = 역순 1패
 - 점유율 막대는 `FrameworkElement` 하나가 `OnRender` 로 사각형 2개만 그리는 `RatioBar`
   (Rectangle+Grid 조합 대비 행당 Visual 3~4개 절감)
 - Treemap 은 squarified 배치 + 카테고리 7색 + 깊이별 밝기, 폴더는 상단 헤더 띠에만 이름 표시
-- 테마: 팔레트 `ResourceDictionary` 만 교체(모든 스타일이 `DynamicResource`), 타이틀 바까지 다크
+- 테마: 팔레트 `ResourceDictionary` 만 교체(모든 스타일이 `DynamicResource`), 타이틀 바까지 다크.
+  **기본은 `Daisy`**(DaisyDisk 제품 스크린샷에서 읽은 남색 팔레트 `#242F48`), `Dark` / `Light` 도 그대로 고를 수 있다
 
 ## 6. 메모리 전략
 
@@ -224,27 +252,27 @@ DiskAnalyzer/
   dist/                              배포용 단일 exe (publish 산출물)
   src/
     DiskAnalyzer.Core/               스캔 엔진 (UI 참조 없음)
-      Models/    NodeStore, StringPool, TopKHeap, ExtensionTable,
+      Models/    NodeStore, StringPool, TopKHeap, ExtensionTable, SunburstPalette,
                  Categorizer, SizeFormatter, Rows, ScanOptions/Progress/Enums,
                  Protection, NodeMutations, CleanupModels, CleanupGrouping,
                  ExclusionRules, ExclusionSettings
       Scanning/  ScanController, CompatibilityScanner, FastScanner,
                  ScanBatch, ScanRuntime, ScanResult, Ntfs/MftReader
-      Analysis/  ProtectionEvaluator, CleanupScorer,
+      Analysis/  ProtectionEvaluator, CleanupScorer, SunburstLayout, SpaceLedger,
                  CleanupAnalyzer, CleanupGrouper, DeveloperAnalyzer
       Interop/   Win32 (FindFirstFileEx, GetFileAttributesEx, DeviceIoControl, ...)
       Services/  DriveService, CacheService, ExportService, ShellService,
-                 FileVerifier, DeletionService
+                 FileVerifier, DeletionService, Collector
     DiskAnalyzer.App/                WPF UI
-      Themes/    Dark.xaml, Light.xaml, Shared.xaml
-      Controls/  RatioBar, TreemapControl
+      Themes/    Daisy.xaml(기본), Dark.xaml, Light.xaml, Shared.xaml
+      Controls/  RatioBar, TreemapControl, SunburstControl
       ViewModels/ MainViewModel, CleanupViewModel,
                   DeleteReviewViewModel, ObservableObject
       MainWindow.xaml(.cs), DeleteReviewWindow.xaml(.cs),
       App.xaml(.cs), app.manifest
     DiskAnalyzer.Bench/              벤치마크 러너
   tests/
-    DiskAnalyzer.Tests/              xunit (370 tests)
+    DiskAnalyzer.Tests/              xunit (428 tests)
 ```
 
 ## 10. 보호 등급 — "삭제해도 되는가"
@@ -493,8 +521,9 @@ dotnet publish src/DiskAnalyzer.App/DiskAnalyzer.App.csproj -c Release -r win-x6
 ```bash
 # 앱 (인자 없이 실행하면 드라이브 목록만 표시)
 dist/DiskAnalyzer.exe
-# 자동화/검증용: 경로와 시작 탭 지정 (0=폴더 1=Treemap 2=큰파일 3=파일유형 4=정리추천)
-dist/DiskAnalyzer.exe "C:\Users" --tab 4
+# 자동화/검증용: 경로와 시작 탭 지정
+# 0=폴더 1=Treemap 2=선버스트 3=큰파일 4=파일유형 5=정리추천 6=빠른이동
+dist/DiskAnalyzer.exe "C:\Users" --tab 5
 ```
 
 ```bash
@@ -512,7 +541,7 @@ dist/DiskAnalyzer.Bench.exe --gen D:\bench 1000000   # 합성 트리 생성
 ## 14. 설정
 
 Scan Mode(Auto/Fast/Compatibility) · Worker Count(Auto/수동) · Follow Symbolic Links ·
-Show Hidden/System Files · UI Theme(Dark/Light/시스템) · Size Unit(Auto/KB/MB/GB/TB) · Cache Results ·
+Show Hidden/System Files · UI Theme(Daisy/Dark/Light/시스템) · Size Unit(Auto/KB/MB/GB/TB) · Cache Results ·
 **스캔 제외 규칙**(아래 14.1)
 
 ### 14.1 스캔 제외 — 안 읽을 것을 정한다
