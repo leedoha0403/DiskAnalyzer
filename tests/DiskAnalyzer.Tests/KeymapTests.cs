@@ -159,7 +159,8 @@ public sealed class KeymapTests : IDisposable
     {
         var map = new Keymap();
         Assert.Equal(Chord("Ctrl+1"), map.Get(CommandIds.TabsFolder));
-        Assert.Equal(Chord("Ctrl+6"), map.Get(CommandIds.TabsQuickMove));
+        Assert.Equal(Chord("Ctrl+3"), map.Get(CommandIds.TabsSunburst));
+        Assert.Equal(Chord("Ctrl+7"), map.Get(CommandIds.TabsQuickMove));
         Assert.Equal(Chord("Ctrl+Shift+Tab"), map.Get(CommandIds.TabsPrevious));
         Assert.Equal(Chord("Backspace"), map.Get(CommandIds.GoParent));
         Assert.Equal(Chord("Alt+Left"), map.Get(CommandIds.GoBack));
@@ -169,6 +170,7 @@ public sealed class KeymapTests : IDisposable
         Assert.Equal(Chord("Ctrl+F5"), map.Get(CommandIds.ForceRescan));
         Assert.Equal(Chord("Ctrl+Shift+C"), map.Get(CommandIds.CopyPathList));
         Assert.Equal(CommandIds.SearchFocus, map.Find(Chord("Ctrl+F")));
+        Assert.Equal(Chord("Ctrl+Delete"), map.Get(CommandIds.ToggleCollect));
         Assert.Null(map.Find(Chord("Ctrl+9")));
     }
 

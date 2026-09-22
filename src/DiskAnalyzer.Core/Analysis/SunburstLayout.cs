@@ -186,6 +186,66 @@ public sealed class SunburstLayout
         return new SunburstLayout(segments, dirId, total, rootName);
     }
 
+    /// <summary>
+    /// 스캔 중용 — Aggregator 가 게시한 현재 폴더 스냅샷만으로 <b>한 겹</b>을 만든다.
+    /// 저장소를 타고 내려가지 않는다(다른 스레드가 쓰는 중이다).
+    /// </summary>
+    public static SunburstLayout BuildFlat(IReadOnlyList<EntryRow> rows, string name, SunburstOptions? options = null)
+    {
+        options ??= SunburstOptions.Default;
+
+        long denom = 0;
+        foreach (var r in rows) denom += r.Size;
+        if (denom <= 0) return new SunburstLayout(Empty, -1, 0, name);
+
+        var segments = new List<SunburstSegment>(Math.Min(rows.Count + 1, 512));
+        double angle = 0;
+        long tailSize = 0;
+        int tailCount = 0;
+
+        foreach (var r in rows)
+        {
+            double w = 360d * ((double)r.Size / denom);
+            if (w < options.MinSweepDegrees || segments.Count >= options.MaxSegments)
+            {
+                tailSize += r.Size;
+                tailCount++;
+                continue;
+            }
+
+            segments.Add(new SunburstSegment
+            {
+                Ring = 0,
+                Start = angle,
+                Sweep = w,
+                Kind = r.IsDirectory ? SunburstKind.Directory : SunburstKind.File,
+                Id = r.Id,
+                Size = r.Size,
+                Name = r.Name,
+                ParentIndex = -1,
+            });
+            angle += w;
+        }
+
+        if (tailCount > 0 && 360d - angle > 0)
+        {
+            segments.Add(new SunburstSegment
+            {
+                Ring = 0,
+                Start = angle,
+                Sweep = 360d - angle,
+                Kind = SunburstKind.Smaller,
+                Id = -1,
+                Size = tailSize,
+                Name = SmallerName(tailCount),
+                ParentIndex = -1,
+                GroupCount = tailCount,
+            });
+        }
+
+        return new SunburstLayout(segments, -1, denom, name);
+    }
+
     /// <summary>묶음 조각의 이름. 사이드바와 툴팁이 같은 문구를 쓴다.</summary>
     public static string SmallerName(int count) => $"작은 항목 {count:N0}개";
 

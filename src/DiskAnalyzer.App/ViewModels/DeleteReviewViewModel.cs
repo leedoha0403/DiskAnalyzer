@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using DiskAnalyzer.Core.Analysis;
 using DiskAnalyzer.Core.Models;
 using DiskAnalyzer.Core.Services;
@@ -78,6 +79,29 @@ public sealed class DeleteReviewRow : ObservableObject
             Level = verdict.Level,
             ProtectionReason = verdict.Reason,
             Warnings = string.Join(" · ", Categorizer.DeleteWarnings(row.FullPath, flags)),
+        };
+    }
+
+    /// <summary>
+    /// 수집함 항목. 담을 때 이미 보호 등급을 받아 두었지만 <b>여기서 다시 판정한다</b> —
+    /// 담아 둔 사이에 경로가 바뀌었을 수 있고, 판정을 한 곳에서만 믿는 구조를 만들지 않는다.
+    /// </summary>
+    public static DeleteReviewRow From(CollectedItem item)
+    {
+        var verdict = ProtectionEvaluator.EvaluateEntry(item.FullPath, item.IsDirectory, CategoryFlags.None);
+        return new DeleteReviewRow
+        {
+            Kind = item.Kind,
+            Id = item.Id,
+            Name = item.Name,
+            FullPath = item.FullPath,
+            Size = item.Size,
+            Extension = item.IsDirectory ? string.Empty : Path.GetExtension(item.FullPath),
+            CategoryText = string.Empty,
+            Flags = CategoryFlags.None,
+            Level = (ProtectionLevel)Math.Max((int)verdict.Level, (int)item.Level),
+            ProtectionReason = verdict.Reason,
+            Warnings = string.Join(" \u00b7 ", Categorizer.DeleteWarnings(item.FullPath, CategoryFlags.None)),
         };
     }
 

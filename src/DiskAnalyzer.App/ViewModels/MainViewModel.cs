@@ -466,9 +466,9 @@ public sealed partial class MainViewModel : ObservableObject
         Raise(nameof(ExclusionSummary));
     }
 
-    public IReadOnlyList<string> ThemeOptions { get; } = new[] { "Dark", "Light", "시스템" };
+    public IReadOnlyList<string> ThemeOptions { get; } = new[] { "Dark", "Light", "시스템", "Daisy" };
 
-    private string _selectedTheme = "Dark";
+    private string _selectedTheme = "Daisy";
     public string SelectedTheme
     {
         get => _selectedTheme;

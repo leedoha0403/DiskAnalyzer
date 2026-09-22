@@ -40,16 +40,23 @@ public partial class MainWindow : Window
             {
                 "Light" => App.AppTheme.Light,
                 "시스템" => App.AppTheme.System,
+                "Daisy" => App.AppTheme.Daisy,
                 _ => App.AppTheme.Dark,
             });
             ApplyDarkTitleBar();
         };
 
-        _vm.ViewRefreshed += (_, _) => UpdateTreemap();
+        _vm.ViewRefreshed += (_, _) =>
+        {
+            UpdateTreemap();
+            UpdateSunburst();
+        };
 
         // [검색] 버튼과 Enter 가 같은 경로를 타도록 탭 전환은 여기서 한다. 결과는 폴더 목록에 나온다.
         _vm.SearchStarted += (_, _) => EnsureFolderListVisible();
         _vm.FolderRevealed += (_, _) => EnsureFolderListVisible();
+
+        InitializeSunburst();
 
         Treemap.HoverChanged += OnTreemapHover;
         Treemap.ItemActivated += OnTreemapActivated;
@@ -181,6 +188,7 @@ public partial class MainWindow : Window
         ApplyLayout();
         _vm.ActiveTab = (LiveTab)Tabs.SelectedIndex;
         UpdateTreemap();
+        UpdateSunburst();
     }
 
     private const double DefaultDockWidth = 400;
@@ -279,12 +287,16 @@ public partial class MainWindow : Window
     {
         var tab = (LiveTab)Tabs.SelectedIndex;
         bool inSplitHost = tab is LiveTab.Folder or LiveTab.Treemap;
+
+        // 선버스트도 폴더 / Treemap 과 같은 위치 상태를 쓰므로 경로 막대를 함께 쓴다.
+        bool navigable = inSplitHost || tab == LiveTab.Sunburst;
         bool both = inSplitHost && _vm.IsSplitView;
         bool folder = both || tab == LiveTab.Folder;
         bool treemap = both || tab == LiveTab.Treemap;
 
-        NavBar.Visibility = inSplitHost ? Visibility.Visible : Visibility.Collapsed;
+        NavBar.Visibility = navigable ? Visibility.Visible : Visibility.Collapsed;
         SplitHost.Visibility = inSplitHost ? Visibility.Visible : Visibility.Collapsed;
+        SunburstPanel.Visibility = tab == LiveTab.Sunburst ? Visibility.Visible : Visibility.Collapsed;
         LargeFilesPanel.Visibility = tab == LiveTab.LargeFiles ? Visibility.Visible : Visibility.Collapsed;
         FileTypesPanel.Visibility = tab == LiveTab.FileTypes ? Visibility.Visible : Visibility.Collapsed;
         CleanupPanel.Visibility = tab == LiveTab.Cleanup ? Visibility.Visible : Visibility.Collapsed;

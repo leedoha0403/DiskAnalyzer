@@ -9,7 +9,8 @@
         Foreground="{DynamicResource TextBrush}"
         FontFamily="Segoe UI, Malgun Gothic" FontSize="13"
         TextOptions.TextFormattingMode="Display"
-        UseLayoutRounding="True">
+        UseLayoutRounding="True"
+        AllowDrop="True" DragOver="OnWindowDragOver" Drop="OnWindowDrop">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
@@ -26,6 +27,7 @@
             <MenuItem Tag="reveal" Header="이 항목이 있는 폴더 열기" Click="OnRevealRow"
                       ToolTip="폴더 탭을 이 항목이 있는 폴더로 옮기고 항목을 선택합니다. Treemap 도 같은 위치로 따라갑니다" />
             <MenuItem Tag="fav" Header="즐겨찾기에 추가" Click="OnRowFavorite" />
+            <MenuItem Header="수집함에 담기" Click="OnRowCollect" />
             <Separator />
             <MenuItem Header="이동 (좌) - 빠른 이동 출발지로 보내기" Click="OnSendLeft"
                       ToolTip="빠른 이동 도크의 출발지(위) 패널에서 이 항목을 선택해 둡니다. 탭을 벗어나지 않습니다" />
@@ -240,44 +242,63 @@
                     <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource BorderBrushSoft}"
                             BorderThickness="0,0,0,1" Padding="14,6,14,0">
                         <Grid>
+                            <!-- 탭과 필터는 같은 줄을 나눠 쓴다. 겹쳐 두면 탭이 늘어날 때 글자가 서로 올라탄다. -->
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
                             <TabControl x:Name="Tabs" SelectionChanged="OnTabChanged" HorizontalAlignment="Left">
                                 <TabItem Header="폴더" />
                                 <TabItem Header="Treemap" />
+                                <TabItem Header="선버스트" AutomationProperties.AutomationId="SunburstTab" />
                                 <TabItem Header="큰 파일" />
                                 <TabItem Header="파일 유형" />
                                 <TabItem Header="정리 추천" />
                                 <TabItem Header="빠른 이동" AutomationProperties.AutomationId="QuickMoveTab" />
                             </TabControl>
 
-                            <StackPanel x:Name="FilterBar" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,6"
-                                        VerticalAlignment="Center">
-                                <TextBlock Text="크기" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                <ComboBox ItemsSource="{Binding MinSizeOptions}" SelectedItem="{Binding SelectedMinSize}"
-                                          Width="120" Margin="0,0,10,0" />
-                                <Grid Width="130" Margin="0,0,6,0">
-                                    <TextBox x:Name="ExtFilterBox"
-                                             Text="{Binding ExtensionFilter, UpdateSourceTrigger=PropertyChanged}"
-                                             ToolTip="확장자 필터 (예: *.pdb;*.log)" />
-                                    <TextBlock Text="*.pdb;*.log" IsHitTestVisible="False" Margin="10,0,0,0"
-                                               VerticalAlignment="Center" Foreground="{DynamicResource TextDimBrush}"
-                                               FontSize="12.5">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Text, ElementName=ExtFilterBox}" Value="">
-                                                        <Setter Property="Visibility" Value="Visible" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </Grid>
-                                <Button Content="적용" Command="{Binding ApplyFilterCommand}" Margin="0,0,16,0" />
-                                <ComboBox ItemsSource="{Binding SearchScopeOptions}" SelectedItem="{Binding SelectedSearchScope}"
-                                          Width="120" Margin="0,0,6,0"
+                            <!-- 필터 + 검색. 탭이 늘어나도 서로 올라타지 않도록 칸으로 나누고,
+                                 폭이 모자라면 검색 상자만 줄어든다(고정폭 StackPanel 은 잘려 나갔다). -->
+                            <Grid x:Name="FilterBar" Grid.Column="1" Margin="12,0,0,6" VerticalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" MinWidth="96" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="크기" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <ComboBox ItemsSource="{Binding MinSizeOptions}" SelectedItem="{Binding SelectedMinSize}"
+                                              Width="108" Margin="0,0,8,0" />
+                                    <Grid Width="118" Margin="0,0,6,0">
+                                        <TextBox x:Name="ExtFilterBox"
+                                                 Text="{Binding ExtensionFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                 ToolTip="확장자 필터 (예: *.pdb;*.log)" />
+                                        <TextBlock Text="*.pdb;*.log" IsHitTestVisible="False" Margin="10,0,0,0"
+                                                   VerticalAlignment="Center" Foreground="{DynamicResource TextDimBrush}"
+                                                   FontSize="12.5">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Text, ElementName=ExtFilterBox}" Value="">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+                                    <Button Content="적용" Command="{Binding ApplyFilterCommand}" Margin="0,0,14,0" />
+                                </StackPanel>
+
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding SearchScopeOptions}"
+                                          SelectedItem="{Binding SelectedSearchScope}"
+                                          Width="112" Margin="0,0,6,0" VerticalAlignment="Center"
                                           ToolTip="검색 범위 - '현재 폴더 하위'는 지금 보고 있는 폴더 안에서만 찾습니다" />
-                                <Grid Width="210" Margin="0,0,6,0">
+
+                                <Grid Grid.Column="2" Margin="0,0,6,0" VerticalAlignment="Center">
                                     <TextBox x:Name="SearchBox"
                                              Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                              KeyDown="OnSearchKeyDown"
@@ -285,7 +306,7 @@
                                              km:ShortcutHint.Text="파일명 / 폴더명 검색 (Enter) {0}&#10;글자만 입력하면 부분 일치, * 와 ? 를 쓰면 이름 전체 패턴 (예: *.log, log_??.txt)" />
                                     <TextBlock Text="파일명 / 폴더명 검색" IsHitTestVisible="False" Margin="10,0,0,0"
                                                VerticalAlignment="Center" Foreground="{DynamicResource TextDimBrush}"
-                                               FontSize="12.5">
+                                               FontSize="12.5" TextTrimming="CharacterEllipsis">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
                                                 <Setter Property="Visibility" Value="Collapsed" />
@@ -298,18 +319,22 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </Grid>
-                                <Button Content="검색" Command="{Binding SearchCommand}" Margin="0,0,6,0" />
-                                <Button Content="지우기" Command="{Binding ClearSearchCommand}" />
 
-                                <!-- 49. 검색 결과가 같은 이름으로 가득 찰 때 폴더 트리로 묶어 본다. 검색 중에만 뜬다. -->
-                                <CheckBox Content="경로별 묶기" IsChecked="{Binding UseSearchTree}" Margin="14,0,0,0"
-                                          AutomationProperties.AutomationId="UseSearchTree"
-                                          Visibility="{Binding IsSearchMode, Converter={StaticResource BoolToVis}}"
-                                          ToolTip="검색 결과를 폴더 트리로 묶고, 같은 이름이 2건 이상이면 한 줄로 접습니다&#x0a;(예: R260827 과 R270100 에 하나씩 있는 Moros.mob → 공통 상위 폴더 아래 한 줄)" />
-                                <TextBlock Text="{Binding SearchFoldSummary}" Style="{StaticResource Caption}"
-                                           VerticalAlignment="Center" Margin="10,0,0,0"
-                                           Visibility="{Binding HasSearchFoldSummary, Converter={StaticResource BoolToVis}}" />
-                            </StackPanel>
+                                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Content="검색" Command="{Binding SearchCommand}" Margin="0,0,6,0" />
+                                    <Button Content="지우기" Command="{Binding ClearSearchCommand}" />
+
+                                    <!-- 49. 검색 결과가 같은 이름으로 가득 찰 때 폴더 트리로 묶어 본다. 검색 중에만 뜬다. -->
+                                    <CheckBox Content="경로별 묶기" IsChecked="{Binding UseSearchTree}" Margin="14,0,0,0"
+                                              VerticalAlignment="Center"
+                                              AutomationProperties.AutomationId="UseSearchTree"
+                                              Visibility="{Binding IsSearchMode, Converter={StaticResource BoolToVis}}"
+                                              ToolTip="검색 결과를 폴더 트리로 묶고, 같은 이름이 2건 이상이면 한 줄로 접습니다&#x0a;(예: R260827 과 R270100 에 하나씩 있는 Moros.mob → 공통 상위 폴더 아래 한 줄)" />
+                                    <TextBlock Text="{Binding SearchFoldSummary}" Style="{StaticResource Caption}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0"
+                                               Visibility="{Binding HasSearchFoldSummary, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
+                            </Grid>
                         </Grid>
                     </Border>
 
@@ -527,6 +552,62 @@
                     </Border>
 
                     <!-- 작업 영역: 분석 탭들(TabHost) 오른쪽에 빠른 이동 도크를 붙일 수 있다. -->
+
+                    <!-- ========== 수집함. 탭과 무관하게 항상 아래에 붙어 있다 ==========
+                         고르는 행위와 지우는 행위를 분리한다. 담아 두는 동안은 아무 일도 일어나지 않는다. -->
+                    <Border x:Name="CollectorBar" DockPanel.Dock="Bottom" Padding="14,7"
+                            AllowDrop="True" DragOver="OnCollectorDragOver" Drop="OnCollectorDrop"
+                            Background="{DynamicResource SurfaceAltBrush}"
+                            BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="삭제..."
+                                    AutomationProperties.AutomationId="CollectorDelete"
+                                    Click="OnCollectorDelete" Margin="8,0,0,0" Padding="14,3"
+                                    IsEnabled="{Binding HasCollected}"
+                                    ToolTip="담긴 항목을 삭제 대상 확인 창으로 넘깁니다. 여기서도 즉시 지우지 않습니다." />
+                            <Button DockPanel.Dock="Right" Content="비우기" Click="OnCollectorClear"
+                                    Margin="8,0,0,0" Padding="12,3" IsEnabled="{Binding HasCollected}" />
+                            <ToggleButton DockPanel.Dock="Right" x:Name="CollectorExpand" Content="목록"
+                                          Margin="8,0,0,0" Padding="12,3" IsEnabled="{Binding HasCollected}"
+                                          Checked="OnCollectorExpandChanged" Unchecked="OnCollectorExpandChanged"
+                                          ToolTip="담긴 것을 펼쳐 확인하고 개별로 뺍니다" />
+                            <TextBlock Text="{Binding CollectorText}" Style="{StaticResource Caption}"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        </DockPanel>
+                    </Border>
+
+                    <Border x:Name="CollectorPanel" DockPanel.Dock="Bottom" MaxHeight="190"
+                            Background="{DynamicResource SurfaceBrush}"
+                            BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0"
+                            Visibility="Collapsed">
+                        <ListBox x:Name="CollectorList" Background="Transparent" BorderThickness="0" Padding="8,6"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="4,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding BadgeText}" Style="{StaticResource Caption}"
+                                                   Margin="0,0,8,0" VerticalAlignment="Center" MinWidth="34" />
+                                        <TextBlock Grid.Column="1" Text="{Binding FullPath}"
+                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                                   ToolTip="{Binding FullPath}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding SizeText}"
+                                                   Style="{StaticResource Numeric}" Margin="12,0,8,0"
+                                                   VerticalAlignment="Center" />
+                                        <Button Grid.Column="3" Content="&#x2715;" Padding="7,0"
+                                                Click="OnCollectorRemove" Tag="{Binding FullPath}"
+                                                ToolTip="수집함에서 빼기" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+
                     <Grid x:Name="WorkArea">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" MinWidth="360" />
@@ -662,6 +743,92 @@
                             </DockPanel>
 
                         </Grid>
+
+
+                        <!-- ========== 선버스트 탭 ==========
+                             가리키면 읽고, 누르면 들어가고, 가운데를 누르면 나온다.
+                             조각에 이름을 쓰지 않는다 - 이름은 옆 목록이 맡고 그림은 비율만 말한다. -->
+                        <DockPanel x:Name="SunburstPanel" Visibility="Collapsed">
+
+                            <Border DockPanel.Dock="Right" Width="278" Padding="14,12"
+                                    Background="{DynamicResource SurfaceAltBrush}"
+                                    BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1,0,0,0">
+                                <DockPanel>
+                                    <Grid DockPanel.Dock="Top">
+                                        <TextBlock Text="{Binding SunburstTitle}" Style="{StaticResource H2}"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,0,86,0"
+                                                   ToolTip="{Binding SunburstTitle}" />
+                                        <TextBlock Text="{Binding SunburstTotal}" Style="{StaticResource Numeric}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                    </Grid>
+                                    <TextBlock DockPanel.Dock="Top" Text="가리키는 중 - 현재 위치는 그대로입니다"
+                                               Style="{StaticResource Caption}" Margin="0,2,0,0"
+                                               Foreground="{DynamicResource AccentBrush}"
+                                               Visibility="{Binding SunburstPeeking, Converter={StaticResource BoolToVis}}" />
+                                    <Border DockPanel.Dock="Top" Height="1" Margin="0,8"
+                                            Background="{DynamicResource BorderBrushSoft}" />
+
+                                    <ListBox x:Name="SunburstList" ItemsSource="{Binding SunburstSidebar}"
+                                             AutomationProperties.AutomationId="SunburstSidebar"
+                                             Background="Transparent" BorderThickness="0"
+                                             MouseDoubleClick="OnSunburstSidebarActivate"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,1" ToolTip="{Binding Tooltip}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Ellipse Width="8" Height="8" Margin="0,0,9,0"
+                                                             VerticalAlignment="Center" Fill="{Binding Dot}" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding Name}"
+                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="2" Text="{Binding SizeText}"
+                                                               Style="{StaticResource Numeric}" Margin="10,0,0,0"
+                                                               VerticalAlignment="Center" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem">
+                                                <Setter Property="Padding" Value="4,2" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsDim}" Value="True">
+                                                        <Setter Property="Opacity" Value="0.58" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
+                                    </ListBox>
+                                </DockPanel>
+                            </Border>
+
+                            <Border DockPanel.Dock="Bottom" Padding="12,7"
+                                    Background="{DynamicResource SurfaceAltBrush}"
+                                    BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0">
+                                <TextBlock x:Name="SunburstInfo" Style="{StaticResource Caption}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </Border>
+
+                            <ctl:SunburstControl x:Name="Sunburst"
+                                                 BackdropBrush="{DynamicResource WindowBackground}"
+                                                 LabelBrush="{DynamicResource TextBrush}"
+                                                 MutedBrush="{DynamicResource TextMutedBrush}"
+                                                 SelectionBrush="{DynamicResource AccentBrush}"
+                                                 CollectedBrush="{DynamicResource BarFillStrongBrush}">
+                                <ctl:SunburstControl.ContextMenu>
+                                    <ContextMenu Opened="OnSunburstMenuOpened">
+                                        <MenuItem x:Name="SbCollect" Header="수집함에 담기" Click="OnSunburstCollect" />
+                                        <MenuItem x:Name="SbOpenExplorer" Header="탐색기에서 열기" Click="OnSunburstOpenExplorer" />
+                                        <MenuItem x:Name="SbCopyPath" Header="경로 복사" Click="OnSunburstCopyPath" />
+                                        <Separator />
+                                        <MenuItem x:Name="SbFavorite" Header="즐겨찾기에 추가" Click="OnSunburstFavorite" />
+                                    </ContextMenu>
+                                </ctl:SunburstControl.ContextMenu>
+                            </ctl:SunburstControl>
+                        </DockPanel>
 
                         <!-- ========== 9. 큰 파일 탭 ========== -->
                         <DockPanel x:Name="LargeFilesPanel" Visibility="Collapsed">

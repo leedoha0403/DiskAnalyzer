@@ -6,7 +6,7 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <!-- [0] 테마 팔레트 - 런타임에 통째로 교체된다(App.ApplyTheme) -->
-                <ResourceDictionary Source="Themes/Dark.xaml" />
+                <ResourceDictionary Source="Themes/Daisy.xaml" />
                 <ResourceDictionary Source="Themes/Shared.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>

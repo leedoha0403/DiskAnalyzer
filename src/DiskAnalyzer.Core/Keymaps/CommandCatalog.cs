@@ -7,6 +7,7 @@ public static class CommandIds
 {
     public const string TabsFolder = "Tabs.Folder";
     public const string TabsTreemap = "Tabs.Treemap";
+    public const string TabsSunburst = "Tabs.Sunburst";
     public const string TabsLargeFiles = "Tabs.LargeFiles";
     public const string TabsFileTypes = "Tabs.FileTypes";
     public const string TabsCleanup = "Tabs.Cleanup";
@@ -38,6 +39,12 @@ public static class CommandIds
     /// 폴더 / Treemap 은 삭제 확인 창, 빠른 이동은 대기열에서 빼기. 키는 하나다.
     /// </summary>
     public const string Delete = "Selection.Delete";
+
+    /// <summary>
+    /// 가리키거나 고른 것을 수집함에 담거나 뺀다. DaisyDisk 의 ⌘⌫ 에 해당한다 —
+    /// Delete 가 "지금 지운다"이면 이것은 "나중에 지울 것으로 담아 둔다"이다.
+    /// </summary>
+    public const string ToggleCollect = "Selection.ToggleCollect";
     public const string DeletePermanent = "Selection.DeletePermanent";
 
     public const string CopyPath = "Clipboard.CopyPath";
@@ -72,10 +79,11 @@ public static class CommandCatalog
     {
         new(CommandIds.TabsFolder, Tabs, "폴더 탭", Ctrl("1")),
         new(CommandIds.TabsTreemap, Tabs, "Treemap 탭", Ctrl("2")),
-        new(CommandIds.TabsLargeFiles, Tabs, "큰 파일 탭", Ctrl("3")),
-        new(CommandIds.TabsFileTypes, Tabs, "파일 유형 탭", Ctrl("4")),
-        new(CommandIds.TabsCleanup, Tabs, "정리 추천 탭", Ctrl("5")),
-        new(CommandIds.TabsQuickMove, Tabs, "빠른 이동 탭", Ctrl("6")),
+        new(CommandIds.TabsSunburst, Tabs, "선버스트 탭", Ctrl("3")),
+        new(CommandIds.TabsLargeFiles, Tabs, "큰 파일 탭", Ctrl("4")),
+        new(CommandIds.TabsFileTypes, Tabs, "파일 유형 탭", Ctrl("5")),
+        new(CommandIds.TabsCleanup, Tabs, "정리 추천 탭", Ctrl("6")),
+        new(CommandIds.TabsQuickMove, Tabs, "빠른 이동 탭", Ctrl("7")),
         new(CommandIds.TabsNext, Tabs, "다음 탭", Ctrl("Tab")),
         new(CommandIds.TabsPrevious, Tabs, "이전 탭", new("Tab", Ctrl: true, Shift: true)),
 
@@ -99,6 +107,7 @@ public static class CommandCatalog
         new(CommandIds.ShowDetails, Select, "상세정보", Bare("Space")),
         new(CommandIds.Delete, Select, "선택 항목 삭제 (빠른 이동: 대기열에서 제거)", Bare("Delete")),
         new(CommandIds.DeletePermanent, Select, "선택 항목 영구 삭제", new("Delete", Shift: true)),
+        new(CommandIds.ToggleCollect, Select, "수집함에 담기 / 빼기", new("Delete", Ctrl: true)),
 
         new(CommandIds.CopyPath, Copy, "선택 항목 경로 복사", Ctrl("C")),
         new(CommandIds.CopyPathList, Copy, "선택 항목 전체 경로 목록 복사", new("C", Ctrl: true, Shift: true)),

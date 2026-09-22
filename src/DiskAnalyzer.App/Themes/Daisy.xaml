@@ -1,0 +1,36 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- DaisyDisk 팔레트. 제품 스크린샷에서 직접 읽은 값이다(docs/daisydisk.html 3.1).
+         배경 #242F48, 이음선 #293855, 경계 #414C64.
+         Dark / Light 를 건드리지 않고 세 번째 선택지로 얹는다 - 모든 스타일이 DynamicResource 라
+         이 사전만 갈아 끼우면 창을 다시 만들지 않고 바뀐다. -->
+
+    <Color x:Key="WindowBackgroundColor">#FF1D2740</Color>
+    <SolidColorBrush x:Key="WindowBackground" Color="#FF1D2740" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#FF242F48" />
+    <SolidColorBrush x:Key="SurfaceAltBrush" Color="#FF293855" />
+    <SolidColorBrush x:Key="SurfaceHoverBrush" Color="#FF32415F" />
+    <SolidColorBrush x:Key="BorderBrushSoft" Color="#FF3A4763" />
+    <SolidColorBrush x:Key="BorderBrushStrong" Color="#FF414C64" />
+
+    <SolidColorBrush x:Key="TextBrush" Color="#FFE8ECF5" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="#FFB9C4DC" />
+    <SolidColorBrush x:Key="TextDimBrush" Color="#FF7B88A6" />
+
+    <!-- 경로 알약과 강조는 스크린샷의 파란 알약(#4A6CF0)에서 가져왔다. -->
+    <SolidColorBrush x:Key="AccentBrush" Color="#FF6E8CFF" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#404A6CF0" />
+    <SolidColorBrush x:Key="BarFillBrush" Color="#FF4A6CF0" />
+    <SolidColorBrush x:Key="BarFillStrongBrush" Color="#FFD9455A" />
+    <SolidColorBrush x:Key="BarTrackBrush" Color="#FF1D2740" />
+    <SolidColorBrush x:Key="SelectionBrush" Color="#FF34477A" />
+
+    <SolidColorBrush x:Key="WarningBrush" Color="#FFF0A860" />
+    <SolidColorBrush x:Key="FolderIconBrush" Color="#FFD1E787" />
+    <SolidColorBrush x:Key="FileIconBrush" Color="#FF9AA6BF" />
+
+    <SolidColorBrush x:Key="TreemapStrokeBrush" Color="#FF242F48" />
+    <SolidColorBrush x:Key="TreemapLabelBrush" Color="#FFE8ECF5" />
+
+</ResourceDictionary>

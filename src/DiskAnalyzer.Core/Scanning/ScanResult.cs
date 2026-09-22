@@ -67,6 +67,10 @@ public enum LiveTab
 {
     Folder,
     Treemap,
+
+    /// <summary>선버스트. 스캔이 끝난 뒤에만 그리므로 Aggregator 는 Treemap 과 같게 다룬다.</summary>
+    Sunburst,
+
     LargeFiles,
     FileTypes,
     Cleanup,

@@ -21,8 +21,9 @@ public partial class MainWindow
 {
     private static readonly string[] TabCommands =
     {
-        CommandIds.TabsFolder, CommandIds.TabsTreemap, CommandIds.TabsLargeFiles,
-        CommandIds.TabsFileTypes, CommandIds.TabsCleanup, CommandIds.TabsQuickMove,
+        CommandIds.TabsFolder, CommandIds.TabsTreemap, CommandIds.TabsSunburst,
+        CommandIds.TabsLargeFiles, CommandIds.TabsFileTypes, CommandIds.TabsCleanup,
+        CommandIds.TabsQuickMove,
     };
 
     private void InstallShortcuts()
@@ -73,6 +74,9 @@ public partial class MainWindow
                 return onNavTab && Run(_vm.PathBar.ToggleFavoriteCommand);
             case CommandIds.RefreshFolderDeep:
                 return onNavTab && Run(_vm.RefreshFolderDeepCommand);
+
+            case CommandIds.ToggleCollect:
+                return CollectFocusedSelection();
 
             case CommandIds.SearchFocus:
                 if (FilterBar.Visibility != Visibility.Visible) return false;
@@ -152,6 +156,7 @@ public partial class MainWindow
                 return false;   // 빠른 이동의 활성 패널 새로고침은 QuickMoveView 가 먼저 처리한다.
             case LiveTab.Folder:
             case LiveTab.Treemap:
+            case LiveTab.Sunburst:
                 return Run(_vm.RefreshFolderCommand);   // 지금 폴더만 실제 상태로 맞춘다(드라이브 전체 재스캔은 강제 재스캔)
             default:
                 return Run(_vm.ApplyFilterCommand);
