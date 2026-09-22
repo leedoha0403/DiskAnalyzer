@@ -277,3 +277,125 @@ public class NodeStoreChildrenTests
         Assert.True(batch.ContainsKey(NodeStore.RootId));
     }
 }
+
+/// <summary>
+/// 이전 스캔과 맞춰 보기 — 두 저장소의 id 는 호환되지 않으므로 경로/이름으로만 맞춰야 한다.
+/// </summary>
+public class ScanDiffTests
+{
+    private const long Mb = 1024L * 1024L;
+
+    private static NodeStore Build(long aSize, long bSize, bool withC, bool withNewFile)
+    {
+        var store = new NodeStore("C:\\");
+        store.SetDirectory(1, NodeStore.RootId, "A", 0, 0);
+        store.AddFile(1, "a.bin", aSize, 0, 0);
+        store.SetDirectory(2, NodeStore.RootId, "B", 0, 0);
+        store.AddFile(2, "b.bin", bSize, 0, 0);
+        if (withC)
+        {
+            store.SetDirectory(3, NodeStore.RootId, "C", 0, 0);
+            store.AddFile(3, "c.bin", 50 * Mb, 0, 0);
+        }
+        if (withNewFile) store.AddFile(NodeStore.RootId, "new.bin", 10 * Mb, 0, 0);
+        store.Seal();
+        return store;
+    }
+
+    [Fact]
+    public void Matches_By_Path_Not_By_Id()
+    {
+        // 이전에는 C 가 있었고 지금은 없다 → 지금 저장소에서 A · B 의 id 가 이전과 달라진다.
+        var previous = Build(100 * Mb, 200 * Mb, withC: true, withNewFile: false);
+        var current = Build(300 * Mb, 200 * Mb, withC: false, withNewFile: true);
+
+        var layout = SunburstLayout.Build(current, NodeStore.RootId);
+        var sizes = ScanDiff.PreviousSizes(current, previous, layout, NodeStore.RootId);
+
+        var a = layout.Segments.Single(s => s.Ring == 0 && s.Name == "A");
+        var b = layout.Segments.Single(s => s.Ring == 0 && s.Name == "B");
+
+        Assert.Equal(100 * Mb, sizes[SunburstLayout.KeyOf(a.Kind, a.Id)]);
+        Assert.Equal(200 * Mb, sizes[SunburstLayout.KeyOf(b.Kind, b.Id)]);
+    }
+
+    /// <summary>이전에 없던 항목은 0 이 아니라 "없음"이어야 한다 — 0 바이트였던 것과 구별된다.</summary>
+    [Fact]
+    public void Brand_New_Items_Are_Absent_Not_Zero()
+    {
+        var previous = Build(100 * Mb, 200 * Mb, withC: false, withNewFile: false);
+        var current = Build(100 * Mb, 200 * Mb, withC: false, withNewFile: true);
+
+        var layout = SunburstLayout.Build(current, NodeStore.RootId);
+        var sizes = ScanDiff.PreviousSizes(current, previous, layout, NodeStore.RootId);
+
+        var fresh = layout.Segments.Single(s => s.Name == "new.bin");
+        Assert.False(sizes.ContainsKey(SunburstLayout.KeyOf(fresh.Kind, fresh.Id)));
+    }
+
+    [Fact]
+    public void Deeper_Rings_Are_Matched_Too()
+    {
+        var previous = Build(100 * Mb, 200 * Mb, withC: false, withNewFile: false);
+        var current = Build(300 * Mb, 200 * Mb, withC: false, withNewFile: false);
+
+        var layout = SunburstLayout.Build(current, NodeStore.RootId);
+        var sizes = ScanDiff.PreviousSizes(current, previous, layout, NodeStore.RootId);
+
+        var inner = layout.Segments.Single(s => s.Ring == 1 && s.Name == "a.bin");
+        Assert.Equal(100 * Mb, sizes[SunburstLayout.KeyOf(inner.Kind, inner.Id)]);
+    }
+
+    [Fact]
+    public void Missing_Previous_Scan_Is_Safe()
+    {
+        var current = Build(100 * Mb, 200 * Mb, withC: false, withNewFile: false);
+        var layout = SunburstLayout.Build(current, NodeStore.RootId);
+
+        Assert.Empty(ScanDiff.PreviousSizes(current, null, layout, NodeStore.RootId));
+        Assert.Empty(ScanDiff.PreviousSizes(null, current, layout, NodeStore.RootId));
+        Assert.Empty(ScanDiff.PreviousSizes(current, current, null, NodeStore.RootId));
+    }
+}
+
+public class SunburstTintTests
+{
+    [Fact]
+    public void Non_Candidates_Are_Pushed_Down_To_Grey()
+    {
+        var grey = SunburstPalette.CleanupFill(0, isCandidate: false);
+        Assert.InRange(Math.Abs(grey.R - grey.B), 0, 30);
+
+        var hot = SunburstPalette.CleanupFill(100, isCandidate: true);
+        Assert.True(hot.R > hot.G && hot.R > hot.B, "우선 정리는 붉게");
+
+        var mild = SunburstPalette.CleanupFill(30, isCandidate: true);
+        Assert.True(mild.G > mild.R, "참고 대상은 푸른 쪽");
+    }
+
+    [Fact]
+    public void Growth_Is_Warm_And_Shrink_Is_Cool()
+    {
+        const long Gb = 1024L * 1024 * 1024;
+
+        var grew = SunburstPalette.DeltaFill(+2 * Gb, 4 * Gb, known: true);
+        var shrank = SunburstPalette.DeltaFill(-2 * Gb, 4 * Gb, known: true);
+        var same = SunburstPalette.DeltaFill(0, 4 * Gb, known: true);
+        var fresh = SunburstPalette.DeltaFill(Gb, 0, known: false);
+
+        Assert.True(grew.R > grew.B, "늘어난 쪽은 따뜻하게");
+        Assert.True(shrank.B > shrank.R, "줄어든 쪽은 차갑게");
+        Assert.InRange(Math.Abs(same.R - same.B), 0, 30);
+        Assert.True(fresh.B > fresh.G, "새로 생긴 것은 보라 계열");
+    }
+
+    /// <summary>작은 파일이 두 배가 됐다고 가장 붉게 칠하면 그림이 소음으로 가득 찬다.</summary>
+    [Fact]
+    public void Small_Items_Do_Not_Saturate()
+    {
+        var tiny = SunburstPalette.DeltaFill(1024 * 1024, 1024 * 1024, known: true);
+        var huge = SunburstPalette.DeltaFill(80L * 1024 * 1024 * 1024, 80L * 1024 * 1024 * 1024, known: true);
+
+        Assert.True(huge.G < tiny.G, "같은 배율이어도 절대량이 큰 쪽이 더 짙어야 한다");
+    }
+}

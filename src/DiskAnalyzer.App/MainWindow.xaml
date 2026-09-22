@@ -213,15 +213,15 @@
         <!-- ================= 본문 ================= -->
         <Grid Margin="16,0,16,12">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="SidebarColumn" Width="Auto" />
-                <ColumnDefinition Width="*" MinWidth="520" />
+                <ColumnDefinition x:Name="SidebarColumn" Width="264" MinWidth="190" />
+                <ColumnDefinition x:Name="SidebarSplitterColumn" Width="Auto" />
+                <ColumnDefinition Width="*" MinWidth="470" />
             </Grid.ColumnDefinitions>
 
             <!-- 4.1 저장소 사이드바. 드라이브와 고정한 스캔 대상이 세로로 쌓인다.
                  위쪽 가로 띠에 두면 스캔 결과가 보이는 높이를 늘 빼앗아 간다 —
                  왼쪽에 세우고 접을 수 있게 하면 필요할 때만 자리를 쓴다. -->
-            <Border x:Name="Sidebar" Grid.Column="0" Style="{StaticResource Card}" Padding="0"
-                    Width="264" Margin="0,0,10,0">
+            <Border x:Name="Sidebar" Grid.Column="0" Style="{StaticResource Card}" Padding="0">
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="저장소" Style="{StaticResource H2}"
                                Margin="14,11,14,8" />
@@ -290,7 +290,13 @@
                 </DockPanel>
             </Border>
 
-            <Border Grid.Column="1" Style="{StaticResource Card}" Padding="0">
+            <GridSplitter x:Name="SidebarSplitter" Grid.Column="1" Width="10"
+                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                          ResizeBehavior="PreviousAndNext" ResizeDirection="Columns"
+                          Background="Transparent" DragCompleted="OnSidebarSplitterDragCompleted"
+                          ToolTip="끌어서 사이드바 너비를 조절합니다" />
+
+            <Border Grid.Column="2" Style="{StaticResource Card}" Padding="0">
                 <DockPanel>
 
                     <!-- 8. 주요 탭 + 12/13. 검색 / 필터 -->
@@ -622,6 +628,11 @@
                                     ToolTip="담긴 항목을 삭제 대상 확인 창으로 넘깁니다. 여기서도 즉시 지우지 않습니다." />
                             <Button DockPanel.Dock="Right" Content="비우기" Click="OnCollectorClear"
                                     Margin="8,0,0,0" Padding="12,3" IsEnabled="{Binding HasCollected}" />
+                            <Button DockPanel.Dock="Right" Content="대기열로" Click="OnCollectorToQueue"
+                                    AutomationProperties.AutomationId="CollectorToQueue"
+                                    Margin="8,0,0,0" Padding="12,3" IsEnabled="{Binding HasCollected}"
+                                    km:ShortcutHint.Command="Collector.ToQueue"
+                                    km:ShortcutHint.Text="담긴 것을 지우는 대신 빠른 이동 대기열로 보냅니다 {0}&#10;보낸 뒤 수집함은 비워집니다" />
                             <ToggleButton DockPanel.Dock="Right" x:Name="CollectorExpand" Content="목록"
                                           Margin="8,0,0,0" Padding="12,3" IsEnabled="{Binding HasCollected}"
                                           Checked="OnCollectorExpandChanged" Unchecked="OnCollectorExpandChanged"
@@ -821,6 +832,22 @@
                                                Visibility="{Binding SunburstPeeking, Converter={StaticResource BoolToVis}}" />
                                     <Border DockPanel.Dock="Top" Height="1" Margin="0,8"
                                             Background="{DynamicResource BorderBrushSoft}" />
+
+                                    <!-- 링을 무엇으로 칠할지. 각도는 그대로고 색만 바뀐다 -
+                                         같은 그림에 "무엇이 큰가 / 지워도 되는가 / 늘었는가" 세 질문을 걸어 본다. -->
+                                    <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="색" Style="{StaticResource Caption}"
+                                                   VerticalAlignment="Center" Margin="0,0,7,0" />
+                                        <ComboBox Grid.Column="1" ItemsSource="{Binding RingTintOptions}"
+                                                  SelectedItem="{Binding SelectedRingTint}"
+                                                  AutomationProperties.AutomationId="RingTint"
+                                                  km:ShortcutHint.Command="View.CycleRingTint"
+                                                  km:ShortcutHint.Text="링의 색 기준 {0}&#10;크기 = 무엇이 큰가 · 정리 추천 = 지워도 되는가 · 증감 = 지난 스캔보다 늘었는가" />
+                                    </Grid>
 
                                     <ListBox x:Name="SunburstList" ItemsSource="{Binding SunburstSidebar}"
                                              AutomationProperties.AutomationId="SunburstSidebar"
@@ -1558,7 +1585,7 @@
             </Border>
 
             <!-- ========== 47. 설정 패널 ========== -->
-            <Border Grid.Column="1" Style="{StaticResource Card}" Width="330" HorizontalAlignment="Right" VerticalAlignment="Top"
+            <Border Grid.Column="2" Style="{StaticResource Card}" Width="330" HorizontalAlignment="Right" VerticalAlignment="Top"
                     Margin="0,10,10,0" Background="{DynamicResource SurfaceBrush}"
                     Visibility="{Binding ShowSettings, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
@@ -1610,7 +1637,7 @@
             </Border>
 
             <!-- ========== 43. 개발용 성능 모니터 ========== -->
-            <Border Grid.Column="1" Style="{StaticResource Card}" Width="272" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+            <Border Grid.Column="2" Style="{StaticResource Card}" Width="272" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                     Margin="0,0,10,10" Opacity="0.97"
                     Visibility="{Binding ShowPerfMonitor, Converter={StaticResource BoolToVis}}">
                 <StackPanel>

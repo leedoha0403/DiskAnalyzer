@@ -2,7 +2,9 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using DiskAnalyzer.App.Keymaps;
 using DiskAnalyzer.Core.Analysis;
+using DiskAnalyzer.Core.Keymaps;
 using DiskAnalyzer.Core.Models;
 
 namespace DiskAnalyzer.App.Controls;
@@ -21,7 +23,7 @@ namespace DiskAnalyzer.App.Controls;
 /// <para>[성능] 레이아웃(각도)은 탐색할 때만 다시 계산한다. 크기가 바뀌면 반지름만 달라지므로
 /// <see cref="Geometry"/> 만 다시 만든다. 만든 기하는 <c>Freeze</c> 해 두어 렌더 중 할당이 없다.</para>
 /// </summary>
-public sealed class SunburstControl : FrameworkElement
+public sealed class SunburstControl : FrameworkElement, IShortcutTarget
 {
     /// <summary>중앙 빈 원의 반지름 비율. DaisyDisk 실측값(바깥 반지름의 0.22).</summary>
     private const double HoleRatio = 0.22d;
@@ -43,8 +45,13 @@ public sealed class SunburstControl : FrameworkElement
     private double _hole;
     private double _ringWidth;
     private int _hoverIndex = -1;
+    private int _focusIndex = -1;          // 키보드가 가리키는 조각. 마우스 호버와 따로 둔다.
     private bool _hoverCenter;
     private Typeface? _typeface;
+
+    private SunburstTint _tint = SunburstTint.Size;
+    private IReadOnlyDictionary<long, int>? _scores;
+    private IReadOnlyDictionary<long, long>? _previous;
 
     /// <summary>가리킨 조각이 바뀌었다. null 이면 조각 밖(가운데 또는 바깥)이다.</summary>
     public event EventHandler<SunburstSegment?>? HoverChanged;
@@ -129,6 +136,7 @@ public sealed class SunburstControl : FrameworkElement
 
         _selected.Clear();
         _hoverIndex = -1;
+        _focusIndex = -1;
         _lastSize = default;
         Rebuild();
     }
@@ -144,6 +152,7 @@ public sealed class SunburstControl : FrameworkElement
         CenterName = name;
         _selected.Clear();
         _hoverIndex = -1;
+        _focusIndex = -1;
         _lastSize = default;
         Rebuild();
     }
@@ -157,6 +166,7 @@ public sealed class SunburstControl : FrameworkElement
         _fill = [];
         _selected.Clear();
         _hoverIndex = -1;
+        _focusIndex = -1;
         InvalidateVisual();
     }
 
@@ -168,6 +178,25 @@ public sealed class SunburstControl : FrameworkElement
             ? _store.GetDirectoryPath(segment.Id)
             : _store.GetFilePath(segment.Id);
     }
+
+    /// <summary>
+    /// 링의 색 기준을 바꾼다. 레이아웃(각도)은 그대로 두고 채움색만 다시 만든다 —
+    /// 같은 그림을 다른 질문으로 읽는 것이지, 다른 그림을 그리는 것이 아니다.
+    /// </summary>
+    /// <param name="scores">조각 키 → 정리 추천 점수. 후보가 아닌 조각은 들어 있지 않다.</param>
+    /// <param name="previous">조각 키 → 이전 스캔에서의 크기. 그때 없던 조각은 들어 있지 않다.</param>
+    public void SetTint(SunburstTint tint,
+                        IReadOnlyDictionary<long, int>? scores = null,
+                        IReadOnlyDictionary<long, long>? previous = null)
+    {
+        _tint = tint;
+        _scores = scores;
+        _previous = previous;
+        RebuildBrushes();
+        InvalidateVisual();
+    }
+
+    public SunburstTint Tint => _tint;
 
     // ---------------------------------------------------------------- 강조
 
@@ -230,7 +259,6 @@ public sealed class SunburstControl : FrameworkElement
 
         int n = _layout.Segments.Count;
         _geometry = new Geometry[n];
-        _fill = new Brush[n];
 
         for (int i = 0; i < n; i++)
         {
@@ -238,14 +266,43 @@ public sealed class SunburstControl : FrameworkElement
             double r0 = _hole + s.Ring * _ringWidth;
             double r1 = r0 + _ringWidth - RingGap;
             _geometry[i] = BuildSegment(r0, Math.Max(r0 + 0.5d, r1), s.Start, s.Sweep);
+        }
 
-            var c = SunburstPalette.Fill(s.Kind, s.Mid);
+        RebuildBrushes();
+        InvalidateVisual();
+    }
+
+    /// <summary>채움색만 다시 만든다. 기하는 건드리지 않는다(색 기준을 바꿀 때 쓴다).</summary>
+    private void RebuildBrushes()
+    {
+        int n = _layout.Segments.Count;
+        _fill = new Brush[n];
+
+        for (int i = 0; i < n; i++)
+        {
+            var c = FillFor(_layout.Segments[i]);
             var brush = new SolidColorBrush(Color.FromArgb(c.A, c.R, c.G, c.B));
             brush.Freeze();
             _fill[i] = brush;
         }
+    }
 
-        InvalidateVisual();
+    private SunburstColor FillFor(SunburstSegment s)
+    {
+        // 묶음과 가상 항목은 어떤 기준에서도 실체가 없으므로 기본 색을 유지한다.
+        if (_tint == SunburstTint.Size || s.Id < 0) return SunburstPalette.Fill(s.Kind, s.Mid);
+
+        long key = SunburstLayout.KeyOf(s.Kind, s.Id);
+
+        if (_tint == SunburstTint.Cleanup)
+        {
+            bool candidate = _scores != null && _scores.TryGetValue(key, out int score);
+            return SunburstPalette.CleanupFill(candidate ? _scores![key] : 0, candidate);
+        }
+
+        bool known = _previous != null && _previous.TryGetValue(key, out long before);
+        long prev = known ? _previous![key] : 0;
+        return SunburstPalette.DeltaFill(s.Size - prev, prev, known);
     }
 
     /// <summary>12시 방향 0°, 시계 방향. 화면 좌표는 y 가 아래로 자라므로 cos/sin 을 그대로 쓰면 된다.</summary>
@@ -274,11 +331,15 @@ public sealed class SunburstControl : FrameworkElement
         var geo = new StreamGeometry { FillRule = FillRule.Nonzero };
         using (var ctx = geo.Open())
         {
+            // isStroked 를 켜 둬야 한다. 끄면 채우기는 되지만 어떤 Pen 도 이 도형에 그려지지 않아
+            // 선택 · 수집함 표시 · 키보드 초점 테두리가 전부 조용히 사라진다.
             ctx.BeginFigure(Polar(rIn, start), isFilled: true, isClosed: true);
-            ctx.LineTo(Polar(rOut, start), false, false);
-            ctx.ArcTo(Polar(rOut, end), new Size(rOut, rOut), 0d, large, SweepDirection.Clockwise, false, false);
-            ctx.LineTo(Polar(rIn, end), false, false);
-            ctx.ArcTo(Polar(rIn, start), new Size(rIn, rIn), 0d, large, SweepDirection.Counterclockwise, false, false);
+            ctx.LineTo(Polar(rOut, start), isStroked: true, isSmoothJoin: false);
+            ctx.ArcTo(Polar(rOut, end), new Size(rOut, rOut), 0d, large,
+                      SweepDirection.Clockwise, isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(Polar(rIn, end), isStroked: true, isSmoothJoin: false);
+            ctx.ArcTo(Polar(rIn, start), new Size(rIn, rIn), 0d, large,
+                      SweepDirection.Counterclockwise, isStroked: true, isSmoothJoin: false);
         }
         geo.Freeze();
         return geo;
@@ -312,6 +373,14 @@ public sealed class SunburstControl : FrameworkElement
 
         DrawOutlines(dc, _collected, CollectedBrush, 2.2d);
         DrawOutlines(dc, _selected, SelectionBrush, 1.8d);
+
+        // 키보드 초점은 선택과 따로 그린다 - 마우스 없이 어디에 있는지 보여야 한다.
+        if (_focusIndex >= 0 && _focusIndex < _geometry.Length)
+        {
+            var pen = new Pen(LabelBrush, 2.4d);
+            pen.Freeze();
+            dc.DrawGeometry(null, pen, _geometry[_focusIndex]);
+        }
 
         DrawCenter(dc);
     }
@@ -459,7 +528,10 @@ public sealed class SunburstControl : FrameworkElement
         if (_hoverIndex < 0 && !_hoverCenter) return;
         _hoverIndex = -1;
         _hoverCenter = false;
-        HoverChanged?.Invoke(this, null);
+
+        // 키보드로 가리켜 둔 것이 있으면 그리로 돌아간다. 마우스가 창 밖으로 나갔다고
+        // 키보드 사용자가 보고 있던 것까지 지우면 설명 줄이 계속 초기화된다.
+        HoverChanged?.Invoke(this, SegmentAt(_focusIndex));
         InvalidateVisual();
     }
 
@@ -515,6 +587,117 @@ public sealed class SunburstControl : FrameworkElement
         // DaisyDisk 와 같다 - 한 번 누르면 들어간다. 두 번 누를 필요가 없다.
         if (segment.CanDrill) ItemActivated?.Invoke(this, segment);
         else ItemSelected?.Invoke(this, segment);
+    }
+
+    // ---------------------------------------------------------------- 키보드
+
+    /// <summary>
+    /// 키보드가 가리키는 조각. 마우스를 쓰지 않는 사람에게는 이것이 "가리킨 것" 이다.
+    /// </summary>
+    public SunburstSegment? Focused => SegmentAt(_focusIndex);
+
+    /// <summary>
+    /// 화살표로 링을 돈다. 방향은 그림과 같게 둔다 —
+    /// 위 / 아래는 같은 겹의 형제, 오른쪽은 바깥(자식), 왼쪽은 안쪽(부모).
+    ///
+    /// <para>화살표는 명령이 아니라 위젯 자체의 이동이라 키맵에 올리지 않는다.
+    /// 이 앱의 다른 목록들도 화살표는 컨트롤이 직접 처리한다.</para>
+    /// </summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (_layout.Segments.Count == 0) return;
+
+        switch (e.Key)
+        {
+            case Key.Down or Key.Right when _focusIndex < 0:
+                SetFocus(0);
+                break;
+            case Key.Up: MoveSibling(-1); break;
+            case Key.Down: MoveSibling(+1); break;
+            case Key.Home: MoveToEdge(first: true); break;
+            case Key.End: MoveToEdge(first: false); break;
+            case Key.Left: FocusParent(); break;
+            case Key.Right: FocusChild(); break;
+            case Key.Escape when _focusIndex >= 0: SetFocus(-1); break;
+            default: return;
+        }
+        e.Handled = true;
+    }
+
+    private void SetFocus(int index)
+    {
+        if (index == _focusIndex) return;
+        _focusIndex = index;
+        HoverChanged?.Invoke(this, SegmentAt(index));   // 옆 목록이 호버와 똑같이 따라온다
+        InvalidateVisual();
+    }
+
+    /// <summary>같은 겹 · 같은 부모를 가진 조각들. 레이아웃이 각도 순으로 넣으므로 그 순서가 곧 화면 순서다.</summary>
+    private List<int> Siblings(int index)
+    {
+        var target = _layout.Segments[index];
+        var list = new List<int>(16);
+        for (int i = 0; i < _layout.Segments.Count; i++)
+        {
+            var s = _layout.Segments[i];
+            if (s.Ring == target.Ring && s.ParentIndex == target.ParentIndex) list.Add(i);
+        }
+        return list;
+    }
+
+    private void MoveSibling(int delta)
+    {
+        if (_focusIndex < 0) { SetFocus(0); return; }
+
+        var siblings = Siblings(_focusIndex);
+        int at = siblings.IndexOf(_focusIndex);
+        if (at < 0) return;
+
+        // 형제 끝에서 한 바퀴 돈다. 원형 그림이라 끝에서 멈추는 쪽이 오히려 어색하다.
+        SetFocus(siblings[(at + delta + siblings.Count) % siblings.Count]);
+    }
+
+    private void MoveToEdge(bool first)
+    {
+        if (_focusIndex < 0) { SetFocus(0); return; }
+        var siblings = Siblings(_focusIndex);
+        if (siblings.Count > 0) SetFocus(first ? siblings[0] : siblings[^1]);
+    }
+
+    private void FocusParent()
+    {
+        if (_focusIndex < 0) return;
+        int parent = _layout.Segments[_focusIndex].ParentIndex;
+        if (parent >= 0) SetFocus(parent);
+    }
+
+    private void FocusChild()
+    {
+        if (_focusIndex < 0) { SetFocus(0); return; }
+        for (int i = _focusIndex + 1; i < _layout.Segments.Count; i++)
+            if (_layout.Segments[i].ParentIndex == _focusIndex) { SetFocus(i); return; }
+    }
+
+    /// <summary>
+    /// 창 단축키 중 "지금 가리킨 것" 에 걸리는 것들만 여기서 처리한다.
+    /// 키 이름은 나오지 않는다 — 무엇으로 부를지는 키맵이 정한다.
+    /// </summary>
+    public bool TryExecuteShortcut(string commandId)
+    {
+        if (Focused is not { } segment) return false;
+
+        switch (commandId)
+        {
+            case CommandIds.Open when segment.CanDrill:
+                ItemActivated?.Invoke(this, segment);
+                return true;
+            case CommandIds.ToggleCollect when segment.CanCollect:
+                CollectRequested?.Invoke(this, segment);
+                return true;
+            default:
+                return false;
+        }
     }
 
     /// <summary>가운데 버튼 = 수집함에 담기 / 빼기. 마우스만으로 모으는 가장 짧은 길이다.</summary>

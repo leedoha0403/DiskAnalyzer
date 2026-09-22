@@ -41,6 +41,11 @@ public partial class MainWindow
         SunburstInfo.Text = SunburstHint;
         RefreshCollectorView();
         _vm.RefreshPinnedTargets();
+
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.RingTint)) _ = ApplyRingTintAsync();
+        };
     }
 
     /// <summary>고정한 폴더 카드: 한 번 누르면 경로로 이동, 두 번이면 스캔(드라이브 카드와 같은 규칙).</summary>
@@ -79,6 +84,90 @@ public partial class MainWindow
         _vm.ShowSunburstSidebar(_vm.CurrentDirectoryId);
         SyncCollectedToSunburst();
         SunburstInfo.Text = SunburstHint;
+        _ = ApplyRingTintAsync();
+    }
+
+    // ---------------------------------------------------------------- 링 색 기준
+
+    // 직전 스캔은 "이전 대비 증감"을 처음 켤 때만 읽는다 - 압축 해제라 비싸고, 대부분의 사용에서는 필요 없다.
+    private ScanResult? _previousScan;
+    private ScanResult? _previousScanFor;
+
+    // 지금 화면에 칠해진 겹침 정보. 색만 보여 주면 "얼마나" 를 알 수 없어 설명 줄에 숫자로도 적는다.
+    private Dictionary<long, int>? _tintScores;
+    private Dictionary<long, long>? _tintPrevious;
+
+    /// <summary>
+    /// 링의 색을 지금 고른 기준으로 칠한다. 각도는 그대로다 —
+    /// <b>같은 그림을 다른 질문으로 읽는 것</b>이지 다른 그림을 그리는 것이 아니다.
+    /// </summary>
+    private async Task ApplyRingTintAsync()
+    {
+        if (SunburstPanel.Visibility != Visibility.Visible) return;
+
+        switch (_vm.RingTint)
+        {
+            case SunburstTint.Cleanup:
+                var scores = CleanupScores();
+                _tintScores = scores;
+                _tintPrevious = null;
+                Sunburst.SetTint(SunburstTint.Cleanup, scores);
+                SunburstInfo.Text = scores.Count > 0
+                    ? $"색 = 정리 추천 점수. 후보 {scores.Count:N0}건이 초록(참고) → 빨강(우선 정리) 으로 칠해집니다. 후보가 아닌 것은 회색입니다."
+                    : "정리 추천 결과가 없습니다. [정리 추천] 탭에서 먼저 분석하세요.";
+                return;
+
+            case SunburstTint.Delta:
+                var previous = await EnsurePreviousScanAsync().ConfigureAwait(true);
+                if (previous == null)
+                {
+                    _tintScores = null;
+                    _tintPrevious = null;
+                    Sunburst.SetTint(SunburstTint.Size);
+                    SunburstInfo.Text = "비교할 직전 스캔이 없습니다. 같은 대상을 한 번 더 스캔하면 그때부터 증감을 볼 수 있습니다.";
+                    return;
+                }
+
+                var sizes = ScanDiff.PreviousSizes(
+                    _vm.CurrentResult?.Store, previous.Store, Sunburst.Layout, _vm.CurrentDirectoryId);
+                _tintScores = null;
+                _tintPrevious = sizes;
+                Sunburst.SetTint(SunburstTint.Delta, previous: sizes);
+                SunburstInfo.Text =
+                    $"색 = {previous.CompletedAt:yyyy-MM-dd HH:mm} 스캔 대비 증감. 붉을수록 늘고 푸를수록 줄었으며, 보라는 그때 없던 항목입니다.";
+                return;
+
+            default:
+                _tintScores = null;
+                _tintPrevious = null;
+                Sunburst.SetTint(SunburstTint.Size);
+                SunburstInfo.Text = SunburstHint;
+                return;
+        }
+    }
+
+    /// <summary>정리 추천 후보의 점수. 후보가 아닌 것은 넣지 않는다(회색으로 눕는다).</summary>
+    private Dictionary<long, int> CleanupScores()
+    {
+        var map = new Dictionary<long, int>(_vm.Cleanup.Candidates.Count);
+        foreach (var c in _vm.Cleanup.Candidates)
+        {
+            var kind = c.Kind == RowKind.Directory ? SunburstKind.Directory : SunburstKind.File;
+            map[SunburstLayout.KeyOf(kind, c.Id)] = c.Score;
+        }
+        return map;
+    }
+
+    private async Task<ScanResult?> EnsurePreviousScanAsync()
+    {
+        var current = _vm.CurrentResult;
+        if (current == null) return null;
+        if (ReferenceEquals(_previousScanFor, current)) return _previousScan;
+
+        _previousScanFor = current;
+        string root = current.RootPath;
+        _previousScan = await Task.Run(() => CacheService.TryLoadPrevious(root)).ConfigureAwait(true);
+        return _previousScan;
     }
 
     /// <summary>
@@ -111,7 +200,34 @@ public partial class MainWindow
         string kind = segment.Kind == SunburstKind.Directory ? "폴더" : "파일";
         string path = Sunburst.PathOf(segment);
         string collected = _vm.Collector.Covers(path) ? "   [수집함]" : string.Empty;
-        return $"{segment.Name}   |   {SizeFormatter.Format(segment.Size)}   |   {share}   |   {kind}   |   {path}{collected}";
+        return $"{segment.Name}   |   {SizeFormatter.Format(segment.Size)}   |   {share}{DescribeTint(segment)}   |   {kind}   |   {path}{collected}";
+    }
+
+    /// <summary>
+    /// 지금 칠해진 색이 무엇을 뜻하는지 숫자로도 적는다.
+    /// 색만으로는 "늘었다"는 알아도 "얼마나"는 알 수 없다.
+    /// </summary>
+    private string DescribeTint(SunburstSegment segment)
+    {
+        if (segment.Id < 0) return string.Empty;
+        long key = SunburstLayout.KeyOf(segment.Kind, segment.Id);
+
+        if (_tintScores != null)
+        {
+            return _tintScores.TryGetValue(key, out int score)
+                ? $"   |   정리 추천 {score}점"
+                : "   |   정리 후보 아님";
+        }
+
+        if (_tintPrevious == null) return string.Empty;
+
+        if (!_tintPrevious.TryGetValue(key, out long before)) return "   |   이전 스캔에 없던 항목";
+
+        long delta = segment.Size - before;
+        if (delta == 0) return "   |   이전과 같음";
+
+        string sign = delta > 0 ? "+" : "−";
+        return $"   |   이전 {SizeFormatter.Format(before)} → {sign}{SizeFormatter.Format(Math.Abs(delta))}";
     }
 
     /// <summary>폴더 조각은 한 번 누르면 들어간다. 폴더 탭과 같은 위치 상태를 쓴다.</summary>
@@ -258,6 +374,32 @@ public partial class MainWindow
         if (sender is FrameworkElement { Tag: string path }) _vm.Collector.Remove(path);
     }
 
+    private void OnCollectorToQueue(object sender, RoutedEventArgs e) => _ = SendCollectorToQueueAsync();
+
+    /// <summary>
+    /// 수집함을 <b>지우는 대신 옮긴다</b>. 이 앱의 두 축(모아 두기 · 옮기기)을 잇는 지점이다 —
+    /// 여기저기 돌아다니며 담은 것을 그대로 다른 드라이브로 넘길 수 있다.
+    ///
+    /// <para>보낸 뒤에는 수집함을 비운다. 남겨 두면 같은 항목이 "옮길 것"이면서 동시에
+    /// "지울 것"으로 남아, 실수로 [삭제...] 를 누를 여지가 생긴다.</para>
+    /// </summary>
+    private async Task SendCollectorToQueueAsync()
+    {
+        var paths = _vm.Collector.Items.Select(i => i.FullPath).ToList();
+        if (paths.Count == 0)
+        {
+            _vm.StatusMessage = "수집함이 비어 있습니다.";
+            return;
+        }
+
+        RevealQuickMove();
+        await _vm.QuickMove.AddPathsToQueueAsync(paths).ConfigureAwait(true);
+        _vm.Collector.Clear();
+
+        _vm.StatusMessage =
+            $"{paths.Count:N0}개를 이동 대기열로 보냈습니다. 목적지를 고른 뒤 [이동 시작] 을 누르면 옮겨집니다.";
+    }
+
     private void OnCollectorClear(object sender, RoutedEventArgs e)
     {
         _vm.Collector.Clear();
@@ -379,9 +521,10 @@ public partial class MainWindow
     /// </summary>
     private bool CollectFocusedSelection()
     {
-        if (SunburstPanel.Visibility == Visibility.Visible && Sunburst.Hovered is { } hovered)
+        // 마우스를 올려 둔 것이 있으면 그것, 없으면 키보드가 가리키는 것.
+        if (SunburstPanel.Visibility == Visibility.Visible && (Sunburst.Hovered ?? Sunburst.Focused) is { } pointed)
         {
-            CollectSegment(hovered);
+            CollectSegment(pointed);
             return true;
         }
 

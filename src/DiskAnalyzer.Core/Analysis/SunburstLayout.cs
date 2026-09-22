@@ -246,6 +246,13 @@ public sealed class SunburstLayout
         return new SunburstLayout(segments, -1, denom, name);
     }
 
+    /// <summary>
+    /// (종류 + id) 를 long 하나로. 겹침 정보(정리 점수 · 이전 크기)를 조각마다 들고 다니지 않고
+    /// 이 키로 찾아 쓴다 — 레이아웃은 그 정보를 모르는 채로 남는다.
+    /// </summary>
+    public static long KeyOf(SunburstKind kind, int id)
+        => ((kind == SunburstKind.Directory ? 1L : 0L) << 32) | (uint)id;
+
     /// <summary>묶음 조각의 이름. 사이드바와 툴팁이 같은 문구를 쓴다.</summary>
     public static string SmallerName(int count) => $"작은 항목 {count:N0}개";
 

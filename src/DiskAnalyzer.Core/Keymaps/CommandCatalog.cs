@@ -26,6 +26,12 @@ public static class CommandIds
     public const string SearchFocus = "Search.Focus";
     public const string SearchCancel = "Search.Cancel";
 
+    /// <summary>왼쪽 저장소 사이드바를 접고 편다.</summary>
+    public const string ToggleSidebar = "View.ToggleSidebar";
+
+    /// <summary>선버스트 링의 색 기준을 크기 → 정리 추천 → 증감 순으로 돌린다.</summary>
+    public const string CycleRingTint = "View.CycleRingTint";
+
     public const string Refresh = "View.Refresh";
     public const string ForceRescan = "View.ForceRescan";
     public const string RefreshFolderDeep = "View.RefreshFolderDeep";
@@ -45,6 +51,12 @@ public static class CommandIds
     /// Delete 가 "지금 지운다"이면 이것은 "나중에 지울 것으로 담아 둔다"이다.
     /// </summary>
     public const string ToggleCollect = "Selection.ToggleCollect";
+
+    /// <summary>수집함에 담긴 것을 빠른 이동 대기열로 옮겨 담는다(지우는 대신 옮기기).</summary>
+    public const string CollectorToQueue = "Collector.ToQueue";
+
+    /// <summary>수집함 비우기. 되돌릴 수 없는 동작이 아니라서 키를 줄 수 있지만 기본값은 없다.</summary>
+    public const string CollectorClear = "Collector.Clear";
     public const string DeletePermanent = "Selection.DeletePermanent";
 
     public const string CopyPath = "Clipboard.CopyPath";
@@ -69,6 +81,8 @@ public static class CommandCatalog
     private const string Select = "선택";
     private const string Copy = "복사";
     private const string QuickMove = "빠른 이동";
+    private const string View = "화면";
+    private const string CollectorCat = "수집함";
 
     private static KeyChord Ctrl(string key) => new(key, Ctrl: true);
     private static KeyChord Alt(string key) => new(key, Alt: true);
@@ -98,6 +112,9 @@ public static class CommandCatalog
         new(CommandIds.SearchFocus, Search, "검색", Ctrl("F")),
         new(CommandIds.SearchCancel, Search, "검색 / 선택 취소", Bare("Esc")),
 
+        new(CommandIds.ToggleSidebar, View, "저장소 사이드바 접기 / 펼치기", Ctrl("B")),
+        new(CommandIds.CycleRingTint, View, "선버스트 색 기준 바꾸기 (크기 → 정리 추천 → 증감)", Ctrl("T")),
+
         new(CommandIds.Refresh, Refresh, "현재 화면 갱신 (폴더 · Treemap: 이 폴더 새로고침)", Bare("F5")),
         new(CommandIds.RefreshFolderDeep, Refresh, "이 폴더 하위까지 다시 스캔", new("F5", Shift: true)),
         new(CommandIds.ForceRescan, Refresh, "강제 재스캔 (드라이브 전체)", Ctrl("F5")),
@@ -108,6 +125,9 @@ public static class CommandCatalog
         new(CommandIds.Delete, Select, "선택 항목 삭제 (빠른 이동: 대기열에서 제거)", Bare("Delete")),
         new(CommandIds.DeletePermanent, Select, "선택 항목 영구 삭제", new("Delete", Shift: true)),
         new(CommandIds.ToggleCollect, Select, "수집함에 담기 / 빼기", new("Delete", Ctrl: true)),
+
+        new(CommandIds.CollectorToQueue, CollectorCat, "수집함을 이동 대기열로 보내기", new("M", Ctrl: true, Shift: true)),
+        new(CommandIds.CollectorClear, CollectorCat, "수집함 비우기", default),
 
         new(CommandIds.CopyPath, Copy, "선택 항목 경로 복사", Ctrl("C")),
         new(CommandIds.CopyPathList, Copy, "선택 항목 전체 경로 목록 복사", new("C", Ctrl: true, Shift: true)),

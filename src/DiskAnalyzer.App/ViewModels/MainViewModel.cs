@@ -6,6 +6,7 @@ using DiskAnalyzer.Core.Models;
 using DiskAnalyzer.Core.Scanning;
 using DiskAnalyzer.Core.Services;
 using DiskAnalyzer.Core.Analysis;
+using DiskAnalyzer.Core.QuickMove;
 using DiskAnalyzer.App.ViewModels.QuickMove;
 
 namespace DiskAnalyzer.App.ViewModels;
@@ -37,6 +38,8 @@ public sealed partial class MainViewModel : ObservableObject
         Options = new ScanOptions();
         _useSearchTree = _ui.SearchGroupByPath;      // 기억해 둔 값으로 시작한다(기본 켜짐)
         _sidebarCollapsed = _ui.SidebarCollapsed;
+        _sidebarWidth = _ui.SidebarWidth > 0 ? _ui.SidebarWidth : DefaultSidebarWidth;
+        _ringTint = Enum.TryParse<SunburstTint>(_ui.RingTint, out var tint) ? tint : SunburstTint.Size;
         _exclusions = ExclusionSettings.Load();
         Options.ExclusionPatterns = _exclusions.Patterns;
         _exclusionText = _exclusions.ToText();
@@ -320,6 +323,22 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>14. 삭제 성공 항목을 데이터 모델에서 즉시 제거한다(전체 재스캔 없이).</summary>
+    /// <summary>
+    /// 드라이브 카드의 용량을 다시 읽는다. 생성자에서 한 번 읽고 마는 값이라
+    /// 100 GB 를 지워도 "남은 용량"이 그대로였다 — 사이드바에 상시 보이는 지금은 더 눈에 띈다.
+    /// </summary>
+    public void RefreshDrives()
+    {
+        string? keep = SelectedDrive?.RootPath;
+        var fresh = DriveService.GetLocalDrives();
+
+        Drives.Clear();
+        foreach (var d in fresh) Drives.Add(d);
+
+        SelectedDrive = Drives.FirstOrDefault(d => PathUtil.Equal(d.RootPath, keep ?? string.Empty))
+                        ?? Drives.FirstOrDefault();
+    }
+
     public void ApplyDeletion(IReadOnlyList<(RowKind Kind, int Id)> removed)
     {
         // 지운 폴더를 빠른 이동 패널이 열어 두고 있을 수 있다. 스캔 결과가 없어도(다른 드라이브 등) 패널은 갱신한다.
@@ -620,6 +639,7 @@ public sealed partial class MainViewModel : ObservableObject
         Navigate(NodeStore.RootId, pushHistory: false);
         RefreshTabData();
         RaiseStatusText();
+        RefreshDrives();          // 스캔 뒤에는 여유 공간이 달라져 있을 수 있다
         Cleanup.SetResult(result);
         RefreshLargeFilesCommand.RaiseCanExecuteChanged();
     }
@@ -931,6 +951,70 @@ public sealed partial class MainViewModel : ObservableObject
             _ui.Save();
         }
     }
+
+    public const double DefaultSidebarWidth = 264d;
+    public const double MinSidebarWidth = 190d;
+
+    private double _sidebarWidth = DefaultSidebarWidth;
+
+    /// <summary>끌어서 정한 사이드바 폭. 좁은 화면에서는 검색 상자가 줄어드니 줄일 수 있어야 한다.</summary>
+    public double SidebarWidth
+    {
+        get => _sidebarWidth;
+        set
+        {
+            double clamped = Math.Max(MinSidebarWidth, value);
+            if (!Set(ref _sidebarWidth, clamped)) return;
+            _ui.SidebarWidth = clamped;
+            _ui.Save();
+        }
+    }
+
+    private SunburstTint _ringTint = SunburstTint.Size;
+
+    /// <summary>선버스트 링을 무엇으로 칠할지. 그림이 답하는 질문이 바뀐다.</summary>
+    public SunburstTint RingTint
+    {
+        get => _ringTint;
+        set
+        {
+            if (!Set(ref _ringTint, value)) return;
+            Raise(nameof(RingTintText));
+            Raise(nameof(SelectedRingTint));
+            _ui.RingTint = value.ToString();
+            _ui.Save();
+        }
+    }
+
+    public IReadOnlyList<string> RingTintOptions { get; } = new[] { "크기", "정리 추천", "이전 대비 증감" };
+
+    /// <summary>화면의 콤보와 묶이는 쪽. 다른 설정들과 같은 방식이라 변환기가 필요 없다.</summary>
+    public string SelectedRingTint
+    {
+        get => RingTintText;
+        set => RingTint = value switch
+        {
+            "정리 추천" => SunburstTint.Cleanup,
+            "이전 대비 증감" => SunburstTint.Delta,
+            _ => SunburstTint.Size,
+        };
+    }
+
+    /// <summary>색 기준을 순서대로 돌린다(단축키용).</summary>
+    public void CycleRingTint()
+        => RingTint = RingTint switch
+        {
+            SunburstTint.Size => SunburstTint.Cleanup,
+            SunburstTint.Cleanup => SunburstTint.Delta,
+            _ => SunburstTint.Size,
+        };
+
+    public string RingTintText => RingTint switch
+    {
+        SunburstTint.Cleanup => "정리 추천",
+        SunburstTint.Delta => "이전 대비 증감",
+        _ => "크기",
+    };
 
     /// <summary>지금 목록이 묶여 있는가(검색 중 + 켜짐). 컬럼 정렬처럼 묶음과 상충하는 기능이 이것을 본다.</summary>
     public bool ShowSearchTree => IsSearchMode && _useSearchTree;

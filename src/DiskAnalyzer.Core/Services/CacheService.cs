@@ -18,6 +18,12 @@ public static class CacheService
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "DiskAnalyzer", "cache");
 
+    /// <summary>
+    /// 직전 스캔 결과. 새 스캔을 저장할 때 기존 파일을 여기로 밀어 둔다 —
+    /// "지난번보다 무엇이 늘었나" 를 답하려면 비교 대상이 하나는 남아 있어야 한다.
+    /// </summary>
+    public static string GetPreviousCachePath(string rootPath) => GetCachePath(rootPath) + ".prev";
+
     public static string GetCachePath(string rootPath)
     {
         string key = rootPath.Replace(':', '_').Replace('\\', '_').Trim('_');
@@ -50,6 +56,17 @@ public static class CacheService
                 result.Store.WriteTo(w);
             }
 
+            // 덮어쓰기 전에 지금 것을 직전 자리로 밀어 둔다. 실패해도 저장 자체는 계속한다
+            // (비교는 있으면 좋은 것이고, 없다고 스캔 결과를 잃을 수는 없다).
+            try
+            {
+                if (File.Exists(path)) File.Move(path, GetPreviousCachePath(result.RootPath), overwrite: true);
+            }
+            catch (Exception)
+            {
+                // 비교용 사본을 못 남겼을 뿐이다.
+            }
+
             File.Move(temp, path, overwrite: true);
             return true;
         }
@@ -60,10 +77,19 @@ public static class CacheService
     }
 
     public static ScanResult? TryLoad(string rootPath, int topK = 1000)
+        => LoadFile(GetCachePath(ScanController.NormalizeRoot(rootPath)), topK);
+
+    /// <summary>
+    /// 직전 스캔 결과. 없으면 null — 처음 스캔했거나 캐시를 껐거나 지운 경우다.
+    /// "이전 대비 증감" 화면은 이것이 없으면 그냥 꺼진 채로 둔다.
+    /// </summary>
+    public static ScanResult? TryLoadPrevious(string rootPath, int topK = 1000)
+        => LoadFile(GetPreviousCachePath(ScanController.NormalizeRoot(rootPath)), topK);
+
+    private static ScanResult? LoadFile(string path, int topK)
     {
         try
         {
-            string path = GetCachePath(ScanController.NormalizeRoot(rootPath));
             if (!File.Exists(path)) return null;
 
             using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20);

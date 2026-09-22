@@ -20,6 +20,21 @@ public enum SunburstKind : byte
 }
 
 /// <summary>
+/// 링의 색을 무엇으로 정할지. 그림이 답하는 질문 자체가 바뀐다.
+/// </summary>
+public enum SunburstTint
+{
+    /// <summary>기본. 색 = 위치. "무엇이 큰가"를 본다.</summary>
+    Size,
+
+    /// <summary>정리 추천 점수. "무엇을 지워도 되는가"를 본다.</summary>
+    Cleanup,
+
+    /// <summary>이전 스캔 대비 증감. "무엇이 늘었는가"를 본다.</summary>
+    Delta,
+}
+
+/// <summary>
 /// 선버스트 색.
 ///
 /// <para>DaisyDisk 의 색 모델을 그대로 쓴다 — <b>색은 카테고리도 깊이도 아니고 위치에서 나온다.</b>
@@ -52,6 +67,37 @@ public static class SunburstPalette
         SunburstKind.Free => FromHsl(222d, 0.20, 0.45, 255),
         _ => FromHsl(HueAt(midAngle), 0.72, 0.68, 255),
     };
+
+    /// <summary>
+    /// 정리 추천 점수(0~100) 색. 후보가 아닌 것은 짙은 회색으로 눕혀 후보만 떠오르게 한다 —
+    /// 여기서는 "큰 것"이 아니라 "지워도 되는 것"이 눈에 먼저 들어와야 한다.
+    /// </summary>
+    public static SunburstColor CleanupFill(int score, bool isCandidate)
+    {
+        if (!isCandidate) return FromHsl(220d, 0.08, 0.34, 255);
+
+        // 30점(참고) 초록 → 100점(우선 정리) 빨강. 점수 구간과 같은 축이다.
+        double t = Math.Clamp((score - 30) / 70d, 0d, 1d);
+        return FromHsl(140d - 140d * t, 0.62, 0.58, 255);
+    }
+
+    /// <summary>
+    /// 이전 스캔 대비 증감 색. 기준은 "그 조각 자신의 이전 크기" 다 —
+    /// 절대 바이트로 칠하면 큰 폴더만 빨개져서 증감 그림이 크기 그림과 똑같아진다.
+    /// </summary>
+    /// <param name="delta">현재 − 이전(바이트). 이전 기록이 없으면 <paramref name="known"/> 가 false 다.</param>
+    public static SunburstColor DeltaFill(long delta, long previous, bool known)
+    {
+        if (!known) return FromHsl(280d, 0.30, 0.52, 255);          // 이전 스캔에 없던 것 = 새로 생김
+        if (delta == 0) return FromHsl(220d, 0.08, 0.36, 255);      // 그대로
+
+        double baseline = Math.Max(previous, 64L * 1024 * 1024);    // 작은 파일의 배율 폭주를 막는다
+        double t = Math.Clamp(Math.Abs(delta) / baseline, 0d, 1d);
+
+        return delta > 0
+            ? FromHsl(8d, 0.40 + 0.42 * t, 0.62 - 0.10 * t, 255)    // 늘었다 = 붉게
+            : FromHsl(190d, 0.40 + 0.42 * t, 0.62 - 0.10 * t, 255); // 줄었다 = 푸르게
+    }
 
     /// <summary>호버 강조용. 같은 색을 조금 밝게 올린다.</summary>
     public static SunburstColor Highlight(SunburstColor c) => new(

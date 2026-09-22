@@ -18,6 +18,12 @@ public sealed class UiSettings
     /// <summary>왼쪽 저장소 사이드바를 접어 두었는가. 좁은 화면에서 한 번 접으면 계속 접힌 채로 쓰는 것이 보통이다.</summary>
     public bool SidebarCollapsed { get; set; }
 
+    /// <summary>사이드바 폭(px). 0 이면 기본값을 쓴다.</summary>
+    public double SidebarWidth { get; set; }
+
+    /// <summary>선버스트 링의 색 기준(<c>SunburstTint</c>). 이름으로 저장해 값이 밀려도 안전하다.</summary>
+    public string RingTint { get; set; } = nameof(SunburstTint.Size);
+
     /// <summary>
     /// 환경 변수 DISKANALYZER_UI_SETTINGS 가 있으면 그 경로를 쓴다 —
     /// 자동 검증 도구가 사용자의 실제 설정을 건드리지 않게 하는 통로다(quickmove.json 과 같은 규칙).

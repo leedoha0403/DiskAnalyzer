@@ -349,9 +349,19 @@ public partial class MainWindow : Window
     private void ApplySidebar()
     {
         bool collapsed = _vm.SidebarCollapsed;
+
         Sidebar.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        SidebarSplitter.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
         SidebarToggleFill.Opacity = collapsed ? 0d : 1d;
+
+        // 접을 때 MinWidth 를 먼저 풀지 않으면 칸이 0 으로 내려가지 않는다.
+        SidebarColumn.MinWidth = collapsed ? 0d : MainViewModel.MinSidebarWidth;
+        SidebarColumn.Width = collapsed ? new GridLength(0) : new GridLength(_vm.SidebarWidth);
+        SidebarSplitterColumn.Width = collapsed ? new GridLength(0) : GridLength.Auto;
     }
+
+    private void OnSidebarSplitterDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+        => _vm.SidebarWidth = SidebarColumn.ActualWidth;
 
     private void OnToggleSidebar(object sender, RoutedEventArgs e)
     {

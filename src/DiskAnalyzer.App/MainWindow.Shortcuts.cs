@@ -78,6 +78,27 @@ public partial class MainWindow
             case CommandIds.ToggleCollect:
                 return CollectFocusedSelection();
 
+            case CommandIds.ToggleSidebar:
+                _vm.SidebarCollapsed = !_vm.SidebarCollapsed;
+                ApplySidebar();
+                return true;
+
+            case CommandIds.CycleRingTint:
+                if (SunburstPanel.Visibility != Visibility.Visible) return false;
+                _vm.CycleRingTint();
+                return true;
+
+            case CommandIds.CollectorToQueue:
+                if (_vm.Collector.IsEmpty) return false;
+                _ = SendCollectorToQueueAsync();
+                return true;
+
+            case CommandIds.CollectorClear:
+                if (_vm.Collector.IsEmpty) return false;
+                _vm.Collector.Clear();
+                _vm.StatusMessage = "수집함을 비웠습니다.";
+                return true;
+
             case CommandIds.SearchFocus:
                 if (FilterBar.Visibility != Visibility.Visible) return false;
                 SearchBox.Focus();
