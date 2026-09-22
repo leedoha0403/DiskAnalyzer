@@ -823,9 +823,20 @@
                         <!-- ========== 선버스트 탭 ==========
                              가리키면 읽고, 누르면 들어가고, 가운데를 누르면 나온다.
                              조각에 이름을 쓰지 않는다 - 이름은 옆 목록이 맡고 그림은 비율만 말한다. -->
-                        <DockPanel x:Name="SunburstPanel" Visibility="Collapsed">
+                        <!-- 링과 목록은 비율로 나눈다. 목록을 고정폭으로 두면 창이 넓어질수록
+                             링 칸만 옆으로 늘어나 원이 빈 들판에 떠 보인다(원 크기는 높이가 정하므로
+                             넓어져도 커지지 않는다). 원본도 목록이 창의 40% 안팎을 쓴다. -->
+                        <Grid x:Name="SunburstPanel" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="300" />
+                                <ColumnDefinition Width="0.68*" MinWidth="262" MaxWidth="560" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
 
-                            <Border DockPanel.Dock="Right" Width="322" Padding="18,14"
+                            <Border Grid.Row="0" Grid.Column="1" Padding="18,14"
                                     Background="{DynamicResource SurfaceAltBrush}"
                                     BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1,0,0,0">
                                 <DockPanel>
@@ -882,7 +893,7 @@
                                 </DockPanel>
                             </Border>
 
-                            <Border DockPanel.Dock="Bottom" Padding="12,6"
+                            <Border Grid.Row="1" Grid.ColumnSpan="2" Padding="12,6"
                                     Background="{DynamicResource SurfaceAltBrush}"
                                     BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0">
                                 <DockPanel>
@@ -903,7 +914,8 @@
 
                             <!-- 가운데 구멍과 이음선은 링이 놓인 패널과 같은 색이어야 한다.
                                  창 배경(더 어두움)을 쓰면 구멍이 검은 원처럼 도드라진다. -->
-                            <ctl:SunburstControl x:Name="Sunburst"
+                            <ctl:SunburstControl x:Name="Sunburst" Grid.Row="0" Grid.Column="0"
+                                                 AutomationProperties.AutomationId="SunburstRing"
                                                  BackdropBrush="{DynamicResource SurfaceBrush}"
                                                  LabelBrush="{DynamicResource TextBrush}"
                                                  MutedBrush="{DynamicResource TextMutedBrush}"
@@ -919,7 +931,7 @@
                                     </ContextMenu>
                                 </ctl:SunburstControl.ContextMenu>
                             </ctl:SunburstControl>
-                        </DockPanel>
+                        </Grid>
 
                         <!-- ========== 9. 큰 파일 탭 ========== -->
                         <DockPanel x:Name="LargeFilesPanel" Visibility="Collapsed">

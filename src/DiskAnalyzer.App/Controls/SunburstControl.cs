@@ -25,8 +25,18 @@ namespace DiskAnalyzer.App.Controls;
 /// </summary>
 public sealed class SunburstControl : FrameworkElement, IShortcutTarget
 {
-    /// <summary>중앙 빈 원의 반지름 비율. DaisyDisk 실측값(바깥 반지름의 0.22).</summary>
-    private const double HoleRatio = 0.26d;
+    /// <summary>중앙 빈 원의 반지름 비율(바깥 반지름 대비). 원본 실측은 0.14 인데
+    /// 두 줄짜리 총량 숫자가 들어가야 해서 조금 키웠다.</summary>
+    private const double HoleRatio = 0.20d;
+
+    /// <summary>
+    /// 이 겹까지는 두께가 같고, 그 바깥은 <see cref="OuterRingScale"/> 배로 얇아진다.
+    /// 원본 실측: 안쪽 다섯 겹이 21px, 그 다음이 13 · 13 · 8px 이다.
+    /// 깊은 곳을 버리지 않으면서도 바깥으로 갈수록 힘을 빼 그림이 번지지 않게 한다.
+    /// </summary>
+    private const int FullWidthRings = 5;
+
+    private const double OuterRingScale = 0.6d;
 
     /// <summary>겹 사이 간격(px). 배경이 비치는 것이 아니라 경계가 보일 만큼만.</summary>
     private const double RingGap = 1.5d;
@@ -253,9 +263,14 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         }
 
         _hole = outer * HoleRatio;
+
         int rings = 1;
         foreach (var s in _layout.Segments) rings = Math.Max(rings, s.Ring + 1);
-        _ringWidth = (outer - _hole) / rings;
+
+        // 안쪽은 제 두께, 바깥은 얇게. 전체를 더한 값이 남은 반지름과 맞도록 한 칸의 두께를 역산한다.
+        double units = Math.Min(rings, FullWidthRings) + Math.Max(0, rings - FullWidthRings) * OuterRingScale;
+        _ringWidth = (outer - _hole) / units;
+        _ringCount = rings;
 
         int n = _layout.Segments.Count;
         _geometry = new Geometry[n];
@@ -263,8 +278,8 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         for (int i = 0; i < n; i++)
         {
             var s = _layout.Segments[i];
-            double r0 = _hole + s.Ring * _ringWidth;
-            double r1 = r0 + _ringWidth - RingGap;
+            double r0 = RadiusAt(s.Ring);
+            double r1 = RadiusAt(s.Ring + 1) - RingGap;
             _geometry[i] = BuildSegment(r0, Math.Max(r0 + 0.5d, r1), s.Start, s.Sweep);
         }
 
@@ -303,6 +318,16 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         bool known = _previous != null && _previous.TryGetValue(key, out long before);
         long prev = known ? _previous![key] : 0;
         return SunburstPalette.DeltaFill(s.Size - prev, prev, known);
+    }
+
+    private int _ringCount = 1;
+
+    /// <summary><paramref name="ring"/> 번째 겹이 시작하는 반지름. 다섯 겹까지는 제 두께, 그 바깥은 얇다.</summary>
+    private double RadiusAt(int ring)
+    {
+        double full = Math.Min(ring, FullWidthRings);
+        double thin = Math.Max(0, ring - FullWidthRings) * OuterRingScale;
+        return _hole + (full + thin) * _ringWidth;
     }
 
     /// <summary>12시 방향 0°, 시계 방향. 화면 좌표는 y 가 아래로 자라므로 cos/sin 을 그대로 쓰면 된다.</summary>
@@ -475,9 +500,16 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         if (r <= _hole) { center = true; return -1; }
         if (_ringWidth <= 0) return -1;
 
-        int ring = (int)((r - _hole) / _ringWidth);
-        double within = (r - _hole) - ring * _ringWidth;
-        if (within > _ringWidth - RingGap) return -1;   // 겹 사이 이음선
+        // 겹마다 두께가 다르므로 나눗셈 한 번으로 찾을 수 없다. 겹 수가 한 자릿수라 그냥 훑는다.
+        int ring = -1;
+        for (int k = 0; k < _ringCount; k++)
+        {
+            if (r < RadiusAt(k) || r >= RadiusAt(k + 1)) continue;
+            if (r > RadiusAt(k + 1) - RingGap) return -1;   // 겹 사이 이음선
+            ring = k;
+            break;
+        }
+        if (ring < 0) return -1;
 
         // atan2 는 3시 방향 기준이므로 12시 기준 시계 방향으로 옮긴다.
         double angle = Math.Atan2(dy, dx) * 180d / Math.PI + 90d;

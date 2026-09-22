@@ -5,8 +5,15 @@ namespace DiskAnalyzer.Core.Analysis;
 /// <summary>선버스트 레이아웃 설정.</summary>
 public sealed class SunburstOptions
 {
-    /// <summary>현재 폴더의 자식부터 몇 겹을 그릴지. DaisyDisk 는 5겹이다.</summary>
-    public int Rings { get; init; } = 5;
+    /// <summary>
+    /// 현재 폴더의 자식부터 몇 겹을 그릴지.
+    ///
+    /// <para>처음에 5겹으로 두었는데, 원본을 반지름 방향으로 재 보니 <b>8겹</b>이었다 —
+    /// 안쪽 5겹은 두께가 같고(실측 21px) 6번째부터 얇아진다(13 · 13 · 8px).
+    /// 5로 자르면 그 바깥이 <b>아예 안 보인다</b>. 얇아지는 것은 그리는 쪽이 맡는다
+    /// (<c>SunburstControl.FullWidthRings</c>).</para>
+    /// </summary>
+    public int Rings { get; init; } = 8;
 
     /// <summary>이보다 좁은 조각은 그리지 않고 <see cref="SunburstKind.Smaller"/> 하나로 합친다(도).</summary>
     public double MinSweepDegrees { get; init; } = 0.9d;
