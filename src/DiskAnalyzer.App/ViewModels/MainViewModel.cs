@@ -40,6 +40,9 @@ public sealed partial class MainViewModel : ObservableObject
         _sidebarCollapsed = _ui.SidebarCollapsed;
         _sidebarWidth = _ui.SidebarWidth > 0 ? _ui.SidebarWidth : DefaultSidebarWidth;
         _ringTint = Enum.TryParse<SunburstTint>(_ui.RingTint, out var tint) ? tint : SunburstTint.Size;
+
+        Options.SizeBasis = Enum.TryParse<SizeBasis>(_ui.SizeBasis, out var basis) ? basis : SizeBasis.Logical;
+        Options.DeduplicateHardLinks = _ui.DeduplicateHardLinks;
         _exclusions = ExclusionSettings.Load();
         Options.ExclusionPatterns = _exclusions.Patterns;
         _exclusionText = _exclusions.ToText();
@@ -422,6 +425,48 @@ public sealed partial class MainViewModel : ObservableObject
     {
         get => Options.FollowReparsePoints;
         set { Options.FollowReparsePoints = value; Raise(); }
+    }
+
+    public IReadOnlyList<string> SizeBasisOptions { get; } = new[] { "논리 (파일 크기)", "물리 (디스크 할당)" };
+
+    /// <summary>
+    /// 탐색기의 "크기"(논리) 와 "디스크 할당 크기"(물리) 의 차이와 같다.
+    /// 물리는 NTFS 압축 폴더 · 스파스 파일이 부풀지 않고 드라이브 사용량과도 덜 어긋난다.
+    /// 다음 스캔부터 적용된다.
+    /// </summary>
+    public string SelectedSizeBasis
+    {
+        get => Options.SizeBasis == SizeBasis.Physical ? SizeBasisOptions[1] : SizeBasisOptions[0];
+        set
+        {
+            var basis = value == SizeBasisOptions[1] ? SizeBasis.Physical : SizeBasis.Logical;
+            if (Options.SizeBasis == basis) return;
+
+            Options.SizeBasis = basis;
+            _ui.SizeBasis = basis.ToString();
+            _ui.Save();
+            Raise();
+            StatusMessage = "크기 기준을 바꿨습니다. 다음 스캔부터 적용됩니다.";
+        }
+    }
+
+    /// <summary>
+    /// 같은 실체가 여러 경로에 걸려 있으면(하드 링크) 처음 것만 센다.
+    /// <c>C:\Windows</c> 실측으로 44.3 GB → 34.3 GB — 10 GB 가 같은 바이트의 중복이었다.
+    /// </summary>
+    public bool DeduplicateHardLinks
+    {
+        get => Options.DeduplicateHardLinks;
+        set
+        {
+            if (Options.DeduplicateHardLinks == value) return;
+
+            Options.DeduplicateHardLinks = value;
+            _ui.DeduplicateHardLinks = value;
+            _ui.Save();
+            Raise();
+            StatusMessage = "하드 링크 처리 방식을 바꿨습니다. 다음 스캔부터 적용됩니다.";
+        }
     }
 
     public bool ShowHiddenFiles

@@ -12,6 +12,18 @@ internal sealed class ScanRuntime
     public required ScanBatchPool Pool { get; init; }
     public required ScanSharedState Stats { get; init; }
     public DriveKind DriveKind { get; init; }
+
+    /// <summary>논리 크기를 디스크 할당 크기로 바꿔 주는 도구. 논리 기준이면 그대로 통과시킨다.</summary>
+    public required AllocationSizer Sizer { get; init; }
+
+    /// <summary>하드 링크를 한 번만 세기 위한 필터. 꺼져 있으면 null.</summary>
+    public HardLinkFilter? HardLinks { get; init; }
+
+    /// <summary>
+    /// 파일 id · 할당 크기가 필요한가. 필요하면 <c>FindFirstFileEx</c> 대신
+    /// 그 둘까지 주는 일괄 열거를 쓴다(그 대신 한 항목당 할 일이 조금 늘어난다).
+    /// </summary>
+    public bool NeedsFileIds => HardLinks != null || Sizer.Basis == SizeBasis.Physical;
 }
 
 /// <summary>

@@ -1,5 +1,21 @@
 namespace DiskAnalyzer.Core.Models;
 
+/// <summary>
+/// 파일 크기를 무엇으로 셀 것인가.
+/// 탐색기의 "크기"(논리) 와 "디스크 할당 크기"(물리) 의 차이와 같다.
+/// </summary>
+public enum SizeBasis
+{
+    /// <summary>파일 안에 든 바이트 수. 탐색기의 "크기" 열과 같아 비교하기 쉽다.</summary>
+    Logical,
+
+    /// <summary>
+    /// 디스크를 실제로 차지하는 바이트 수. 압축 폴더 · 스파스 파일이 부풀지 않고,
+    /// 드라이브 사용량과의 차이(숨은 공간)도 줄어든다.
+    /// </summary>
+    Physical,
+}
+
 public enum ScanMode
 {
     /// <summary>NTFS + 관리자 권한이면 Fast, 아니면 Compatibility 로 자동 결정.</summary>

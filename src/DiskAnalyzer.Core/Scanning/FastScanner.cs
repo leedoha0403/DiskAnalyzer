@@ -46,7 +46,8 @@ internal sealed class FastScanner
         using (var pump = StartProgressPump(reader, ct))
         {
             table = await Task.Run(
-                () => reader.ReadAll(_rt.Options.ShowHiddenFiles, _rt.Options.ShowSystemFiles, ct),
+                () => reader.ReadAll(_rt.Options.ShowHiddenFiles, _rt.Options.ShowSystemFiles,
+                                     _rt.Options.SizeBasis == SizeBasis.Physical, ct),
                 CancellationToken.None).ConfigureAwait(false);
         }
 

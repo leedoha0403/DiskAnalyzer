@@ -24,6 +24,12 @@ public sealed class UiSettings
     /// <summary>선버스트 링의 색 기준(<c>SunburstTint</c>). 이름으로 저장해 값이 밀려도 안전하다.</summary>
     public string RingTint { get; set; } = nameof(SunburstTint.Size);
 
+    /// <summary>크기를 논리로 볼지 물리(디스크 할당)로 볼지. 이름으로 저장한다.</summary>
+    public string SizeBasis { get; set; } = nameof(Models.SizeBasis.Logical);
+
+    /// <summary>하드 링크를 한 번만 셀지.</summary>
+    public bool DeduplicateHardLinks { get; set; }
+
     /// <summary>
     /// 환경 변수 DISKANALYZER_UI_SETTINGS 가 있으면 그 경로를 쓴다 —
     /// 자동 검증 도구가 사용자의 실제 설정을 건드리지 않게 하는 통로다(quickmove.json 과 같은 규칙).

@@ -1629,6 +1629,14 @@
                     <ComboBox ItemsSource="{Binding ThemeOptions}" SelectedItem="{Binding SelectedTheme}"
                               Margin="0,3,0,10" />
 
+                    <TextBlock Text="크기 기준" Style="{StaticResource Caption}" />
+                    <ComboBox ItemsSource="{Binding SizeBasisOptions}" SelectedItem="{Binding SelectedSizeBasis}"
+                              AutomationProperties.AutomationId="SizeBasis" Margin="0,3,0,4"
+                              ToolTip="논리 = 탐색기의 '크기' 열&#10;물리 = '디스크 할당 크기'. 압축 폴더 · 스파스 파일이 부풀지 않습니다&#10;다음 스캔부터 적용됩니다" />
+                    <CheckBox Content="하드 링크를 한 번만 세기" IsChecked="{Binding DeduplicateHardLinks}"
+                              AutomationProperties.AutomationId="DedupeHardLinks" Margin="0,0,0,10"
+                              ToolTip="같은 실체가 여러 경로에 걸려 있으면 처음 것만 셉니다&#10;C:\Windows 실측: 44.3 GB → 34.3 GB (10 GB 가 중복)&#10;열거 방식이 바뀌어 스캔이 조금 느려집니다" />
+
                     <TextBlock Text="Size Unit" Style="{StaticResource Caption}" />
                     <ComboBox ItemsSource="{Binding SizeUnitOptions}" SelectedItem="{Binding SelectedSizeUnit}"
                               Margin="0,3,0,12" />

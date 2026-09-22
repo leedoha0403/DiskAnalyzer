@@ -15,6 +15,23 @@ public sealed class ScanOptions
     public bool ShowSystemFiles { get; set; } = true;
     public bool CacheResults { get; set; } = true;
 
+    /// <summary>
+    /// 크기를 논리로 볼지 물리(디스크 할당)로 볼지.
+    ///
+    /// <para>기본은 논리다. 탐색기의 "크기" 열과 같아 대조하기 쉽고, 지금까지의 실측 수치도 이 기준이다.
+    /// NTFS 압축을 쓰는 볼륨이라면 물리 쪽이 실제 회수 가능한 용량에 가깝다.</para>
+    /// </summary>
+    public SizeBasis SizeBasis { get; set; } = SizeBasis.Logical;
+
+    /// <summary>
+    /// 하드 링크를 한 번만 셀지. 같은 실체가 여러 경로에 걸려 있으면 처음 만난 것만 세고
+    /// 나머지는 0 바이트로 둔다(<c>C:\Windows\WinSxS</c> 가 대표적이다).
+    ///
+    /// <para>켜면 열거를 <c>FindFirstFileEx</c> 대신 파일 id 까지 주는 일괄 API 로 바꾼다.
+    /// Fast(MFT) 스캔은 레코드 하나가 곧 파일 하나라 이 설정과 무관하게 언제나 한 번만 센다.</para>
+    /// </summary>
+    public bool DeduplicateHardLinks { get; set; }
+
     /// <summary>Top-K 힙 크기. UI 는 이 안에서 TOP 50/100/500/1000 을 잘라 쓴다.</summary>
     public int TopFileCount { get; set; } = 1000;
 

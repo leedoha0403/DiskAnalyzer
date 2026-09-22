@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Threading.Channels;
+using DiskAnalyzer.Core.Interop;
 using DiskAnalyzer.Core.Models;
 using DiskAnalyzer.Core.Services;
 
@@ -92,6 +93,11 @@ public sealed class ScanController
             Pool = pool,
             Stats = stats,
             DriveKind = driveKind,
+
+            // 클러스터 크기는 볼륨마다 한 번만 물어보면 된다. 대부분의 파일은 이 값으로 올림만 하면
+            // 할당 크기가 나오므로, 파일마다 API 를 부르지 않아도 된다.
+            Sizer = new AllocationSizer(options.SizeBasis, Win32.GetBytesPerCluster(Path.GetPathRoot(rootPath) ?? rootPath)),
+            HardLinks = options.DeduplicateHardLinks ? new HardLinkFilter() : null,
         };
 
         var sw = Stopwatch.StartNew();

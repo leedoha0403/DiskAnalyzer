@@ -33,6 +33,8 @@ var mode = ScanMode.Auto;
 int workers = 0;
 int repeat = 1;
 bool sweep = false;
+bool physical = false;
+bool dedupe = false;
 var exclusions = new List<string>();
 
 for (int i = 1; i < args.Length; i++)
@@ -59,6 +61,12 @@ for (int i = 1; i < args.Length; i++)
         case "--exclude" when i + 1 < args.Length:
             exclusions.Add(args[++i]);
             break;
+        case "--physical":
+            physical = true;
+            break;
+        case "--dedupe" or "--hardlinks":
+            dedupe = true;
+            break;
     }
 }
 
@@ -76,17 +84,18 @@ if (sweep)
     foreach (int w in new[] { 1, 2, 4, 8, 12, 16, 24 })
     {
         if (w > Environment.ProcessorCount * 2) break;
-        await RunOnce(path, ScanMode.Compatibility, w, exclusions);
+        await RunOnce(path, ScanMode.Compatibility, w, exclusions, physical, dedupe);
     }
 }
 else
 {
-    for (int i = 0; i < repeat; i++) await RunOnce(path, mode, workers, exclusions);
+    for (int i = 0; i < repeat; i++) await RunOnce(path, mode, workers, exclusions, physical, dedupe);
 }
 
 return 0;
 
-static async Task RunOnce(string path, ScanMode mode, int workers, IReadOnlyList<string> exclusions)
+static async Task RunOnce(string path, ScanMode mode, int workers, IReadOnlyList<string> exclusions,
+                          bool usePhysical, bool dedupeLinks)
 {
     var options = new ScanOptions
     {
@@ -94,6 +103,8 @@ static async Task RunOnce(string path, ScanMode mode, int workers, IReadOnlyList
         WorkerCount = workers,
         CacheResults = false,
         ExclusionPatterns = exclusions,
+        SizeBasis = usePhysical ? SizeBasis.Physical : SizeBasis.Logical,
+        DeduplicateHardLinks = dedupeLinks,
     };
 
     var proc = Process.GetCurrentProcess();

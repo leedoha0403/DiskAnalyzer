@@ -20,6 +20,8 @@ internal static class Win32
     internal const uint FILE_ATTRIBUTE_HIDDEN = 0x00000002;
     internal const uint FILE_ATTRIBUTE_SYSTEM = 0x00000004;
     internal const uint FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400;
+    internal const uint FILE_ATTRIBUTE_COMPRESSED = 0x00000800;
+    internal const uint FILE_ATTRIBUTE_SPARSE_FILE = 0x00000200;
 
     internal const int ERROR_ACCESS_DENIED = 5;
     internal const int ERROR_PATH_NOT_FOUND = 3;
@@ -154,7 +156,6 @@ internal static class Win32
 
     internal const uint DELETE = 0x00010000;
     internal const uint FILE_READ_ATTRIBUTES = 0x00000080;
-    internal const uint FILE_SHARE_DELETE = 0x00000004;
     internal const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
     internal const uint FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
 
@@ -231,6 +232,71 @@ internal static class Win32
         string lpExistingFileName, string lpNewFileName,
         CopyProgressRoutine? lpProgressRoutine, IntPtr lpData,
         ref int pbCancel, uint dwCopyFlags);
+
+    // ---------------------------------------------------------------- 디렉터리 일괄 열거
+    //
+    // FindFirstFileEx 는 파일 id 도 할당 크기도 주지 않는다. GetFileInformationByHandleEx 의
+    // FileIdBothDirectoryInfo 는 한 번의 호출로 여러 항목을 주면서 둘 다 담고 있어서,
+    // 하드 링크 판별과 물리 크기를 <b>파일당 추가 호출 없이</b> 해결한다.
+
+    internal const int FileIdBothDirectoryInfo = 10;
+    internal const int FileIdBothDirectoryRestartInfo = 11;
+    internal const uint FILE_LIST_DIRECTORY = 0x0001;
+    internal const uint FILE_SHARE_DELETE = 0x00000004;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern bool GetFileInformationByHandleEx(
+        SafeFileHandle hFile, int fileInformationClass, IntPtr lpFileInformation, uint dwBufferSize);
+
+    /// <summary>
+    /// FILE_ID_BOTH_DIR_INFO 한 항목의 고정 부분 크기. 이름은 그 뒤에 이어 붙는다.
+    /// 구조체로 매핑하지 않고 오프셋으로 읽는다 — 짧은 이름 12자 뒤에 정렬용 빈칸이 끼어 있어
+    /// 구조체 정의가 컴파일러 정렬 규칙에 휘둘리기 쉽다.
+    /// </summary>
+    internal const int FileIdBothDirInfoHeader = 104;
+
+    internal const int FidCreationTime = 8;
+    internal const int FidLastAccessTime = 16;
+    internal const int FidLastWriteTime = 24;
+    internal const int FidEndOfFile = 40;
+    internal const int FidAllocationSize = 48;
+    internal const int FidFileAttributes = 56;
+    internal const int FidFileNameLength = 60;
+    internal const int FidFileId = 96;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "GetCompressedFileSizeW")]
+    private static extern uint GetCompressedFileSizeW(string lpFileName, out uint lpFileSizeHigh);
+
+    /// <summary>
+    /// 디스크가 실제로 내준 바이트 수. 압축 · 스파스 파일만 이걸로 묻는다(파일마다 부르면 비싸다).
+    /// 실패하면 -1 을 돌려 호출자가 계산값으로 돌아가게 한다.
+    /// </summary>
+    internal static long GetCompressedSize(string path)
+    {
+        uint low = GetCompressedFileSizeW(path, out uint high);
+        if (low == 0xFFFFFFFF && Marshal.GetLastWin32Error() != 0) return -1;
+        return ((long)high << 32) | low;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "GetDiskFreeSpaceW")]
+    private static extern bool GetDiskFreeSpaceW(string lpRootPathName,
+        out uint lpSectorsPerCluster, out uint lpBytesPerSector,
+        out uint lpNumberOfFreeClusters, out uint lpTotalNumberOfClusters);
+
+    /// <summary>볼륨의 클러스터 크기(바이트). 알 수 없으면 0.</summary>
+    internal static int GetBytesPerCluster(string rootPath)
+    {
+        try
+        {
+            return GetDiskFreeSpaceW(rootPath, out uint spc, out uint bps, out _, out _)
+                ? checked((int)(spc * bps))
+                : 0;
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
+    }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "GetDiskFreeSpaceExW")]
     [return: MarshalAs(UnmanagedType.Bool)]

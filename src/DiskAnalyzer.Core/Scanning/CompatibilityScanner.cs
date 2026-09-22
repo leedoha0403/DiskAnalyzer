@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using DiskAnalyzer.Core.Interop;
@@ -123,7 +124,15 @@ internal sealed class CompatibilityScanner
         return _rt.Pool.Rent();
     }
 
-    private unsafe ScanBatch ProcessDirectory(DirWorkItem item, ScanBatch batch, CancellationToken ct)
+    private ScanBatch ProcessDirectory(DirWorkItem item, ScanBatch batch, CancellationToken ct)
+        => _rt.NeedsFileIds
+            ? ProcessDirectoryWithIds(item, batch, ct)
+            : ProcessDirectoryFast(item, batch, ct);
+
+    /// <summary>
+    /// 기본 경로. 열거 결과에 있는 것만 쓰고 파일당 추가 API 호출이 없다(실측 397k files/s).
+    /// </summary>
+    private unsafe ScanBatch ProcessDirectoryFast(DirWorkItem item, ScanBatch batch, CancellationToken ct)
     {
         // "\\?\" 접두사로 MAX_PATH 260자 제한을 우회한다. 깊은 node_modules 트리에서 필수.
         string search = BuildSearchPattern(item.Path);
@@ -217,13 +226,183 @@ internal sealed class CompatibilityScanner
             else
             {
                 // 26/27. 열거 결과에 이미 들어 있는 메타데이터만 사용한다(추가 API 호출 없음).
-                batch.Add(-1, item.Id, name, data.Size,
+                //
+                // 물리 크기 기준이면 대부분은 클러스터 올림으로 끝나고, 압축 · 스파스인 것만
+                // 실제로 물어본다. 경로 문자열도 그때만 만든다 - 파일마다 만들면 그것만으로 수십 초다.
+                long size = data.Size;
+                if (!_rt.Sizer.IsLogical)
+                {
+                    size = AllocationSizer.NeedsQuery(attr)
+                        ? _rt.Sizer.Query(data.Size, Combine(item.Path, name))
+                        : _rt.Sizer.RoundUpToCluster(data.Size);
+                }
+
+                batch.Add(-1, item.Id, name, size,
                     data.ftLastWriteTime, data.ftCreationTime, data.ftLastAccessTime, attr);
             }
         }
         while (Win32.FindNextFile(handle, out data));
 
         return batch;
+    }
+
+
+    /// <summary>
+    /// 파일 id · 할당 크기가 필요할 때 쓰는 열거.
+    ///
+    /// <para><c>FindFirstFileEx</c> 는 그 둘을 주지 않아서, 하드 링크를 가리려면 파일마다 핸들을 열어야 하고
+    /// 압축 파일 크기를 알려면 파일마다 또 물어봐야 한다. 2,900만 파일에서 파일당 syscall 하나면 그것만으로 몇 분이다.
+    /// <c>FileIdBothDirectoryInfo</c> 는 <b>한 번의 호출로 여러 항목</b>을 주면서 id 와 할당 크기를 함께 담고 있어
+    /// 추가 호출이 0 이다.</para>
+    ///
+    /// <para>기본 경로와 본문이 비슷하지만 합치지 않았다 — 검증된 빠른 경로를 건드리지 않기 위해서다.</para>
+    /// </summary>
+    private unsafe ScanBatch ProcessDirectoryWithIds(DirWorkItem item, ScanBatch batch, CancellationToken ct)
+    {
+        using var dir = Win32.CreateFile(
+            BuildDirectoryPath(item.Path), Win32.FILE_LIST_DIRECTORY,
+            Win32.FILE_SHARE_READ | Win32.FILE_SHARE_WRITE | Win32.FILE_SHARE_DELETE,
+            IntPtr.Zero, Win32.OPEN_EXISTING, Win32.FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
+
+        if (dir.IsInvalid)
+        {
+            int err = Marshal.GetLastWin32Error();
+            if (err == Win32.ERROR_ACCESS_DENIED) Interlocked.Increment(ref _rt.Stats.AccessDenied);
+            else Interlocked.Increment(ref _rt.Stats.Errors);
+            Interlocked.Increment(ref _rt.Stats.SkippedFolders);
+            return batch;
+        }
+
+        if ((Interlocked.Increment(ref _dirCounterForPathUpdate) & 0x3F) == 0)
+            _rt.Stats.CurrentPath = item.Path;
+
+        bool showHidden = _rt.Options.ShowHiddenFiles;
+        bool showSystem = _rt.Options.ShowSystemFiles;
+        bool follow = _rt.Options.FollowReparsePoints;
+        bool physical = _rt.Sizer.Basis == SizeBasis.Physical;
+        var links = _rt.HardLinks;
+
+        var exclude = _rt.Options.Exclusions;
+        bool filtering = !exclude.IsEmpty;
+        bool pathRules = exclude.HasPathRules;
+
+        const int BufferBytes = 64 * 1024;
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferBytes);
+
+        try
+        {
+            fixed (byte* raw = buffer)
+            {
+                int infoClass = Win32.FileIdBothDirectoryRestartInfo;
+
+                while (Win32.GetFileInformationByHandleEx(dir, infoClass, (IntPtr)raw, BufferBytes))
+                {
+                    infoClass = Win32.FileIdBothDirectoryInfo;   // 두 번째부터는 이어서 읽는다
+                    int offset = 0;
+
+                    while (true)
+                    {
+                        if (ct.IsCancellationRequested) return batch;
+
+                        byte* entry = raw + offset;
+                        int next = *(int*)entry;
+
+                        uint attr = *(uint*)(entry + Win32.FidFileAttributes);
+                        int nameBytes = *(int*)(entry + Win32.FidFileNameLength);
+                        var name = new ReadOnlySpan<char>(entry + Win32.FileIdBothDirInfoHeader, nameBytes / 2);
+
+                        if (!IsDotEntry(name)
+                            && (showHidden || (attr & Win32.FILE_ATTRIBUTE_HIDDEN) == 0)
+                            && (showSystem || (attr & Win32.FILE_ATTRIBUTE_SYSTEM) == 0))
+                        {
+                            bool isDir = (attr & Win32.FILE_ATTRIBUTE_DIRECTORY) != 0;
+                            bool skip = false;
+
+                            if (filtering)
+                            {
+                                if (isDir)
+                                {
+                                    skip = exclude.ExcludesDirectoryName(name)
+                                        || (pathRules && exclude.MayEndPathRule(name)
+                                            && exclude.ExcludesPath(Combine(item.Path, name)));
+                                    if (skip) Interlocked.Increment(ref _rt.Stats.ExcludedFolders);
+                                }
+                                else
+                                {
+                                    skip = exclude.ExcludesFile(name);
+                                    if (skip) Interlocked.Increment(ref _rt.Stats.ExcludedFiles);
+                                }
+                            }
+
+                            if (!skip)
+                            {
+                                if (batch.IsFull)
+                                {
+                                    _rt.BatchWriter.WriteAsync(batch, ct).AsTask().GetAwaiter().GetResult();
+                                    batch = _rt.Pool.Rent();
+                                }
+
+                                long write = *(long*)(entry + Win32.FidLastWriteTime);
+                                long create = *(long*)(entry + Win32.FidCreationTime);
+                                long access = *(long*)(entry + Win32.FidLastAccessTime);
+
+                                if (isDir)
+                                {
+                                    int childId = Interlocked.Increment(ref _nextDirId) - 1;
+                                    batch.Add(childId, item.Id, name, 0, write, create, access, attr);
+
+                                    bool isReparse = (attr & Win32.FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+                                    if (isReparse && !follow)
+                                    {
+                                        Interlocked.Increment(ref _rt.Stats.SkippedFolders);
+                                    }
+                                    else
+                                    {
+                                        Interlocked.Increment(ref _pendingDirs);
+                                        _dirQueue.Writer.TryWrite(new DirWorkItem(childId, Combine(item.Path, name)));
+                                    }
+                                }
+                                else
+                                {
+                                    long size = physical
+                                        ? *(long*)(entry + Win32.FidAllocationSize)
+                                        : *(long*)(entry + Win32.FidEndOfFile);
+
+                                    // 같은 실체를 두 번째로 만났으면 0 바이트로 센다. 항목 자체는 남겨
+                                    // 목록에서 사라지지 않게 한다(원본도 0 바이트로 보여 준다).
+                                    if (links != null && !links.TryClaim(*(long*)(entry + Win32.FidFileId)))
+                                        size = 0;
+
+                                    batch.Add(-1, item.Id, name, size, write, create, access, attr);
+                                }
+                            }
+                        }
+
+                        if (next == 0) break;
+                        offset += next;
+                    }
+                }
+
+                int last = Marshal.GetLastWin32Error();
+                if (last != Win32.ERROR_NO_MORE_FILES && last != 0) Interlocked.Increment(ref _rt.Stats.Errors);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+
+        return batch;
+    }
+
+    private static bool IsDotEntry(ReadOnlySpan<char> name)
+        => name.Length > 0 && name[0] == '.' && (name.Length == 1 || (name.Length == 2 && name[1] == '.'));
+
+    /// <summary>열거용 디렉터리 핸들 경로. 260자 제한을 넘기 위해 접두사를 붙이고 끝의 구분자는 뗀다.</summary>
+    private static string BuildDirectoryPath(string path)
+    {
+        string prefix = path.StartsWith(@"\\", StringComparison.Ordinal) ? string.Empty : @"\\?\";
+        return prefix + path;
     }
 
     private static string BuildSearchPattern(string path)

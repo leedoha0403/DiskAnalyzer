@@ -111,7 +111,11 @@ internal sealed class MftReader : IDisposable
     }
 
     /// <summary>MFT 전체를 읽어 레코드 테이블을 만든다.</summary>
-    public MftRecordTable? ReadAll(bool showHidden, bool showSystem, CancellationToken ct)
+    /// <param name="physical">
+    /// 크기를 디스크 할당량으로 읽는다. MFT 는 $DATA 헤더에 할당 크기를 이미 들고 있어
+    /// <b>추가 비용이 0</b> 이다 — 열거 방식과 달리 압축 · 스파스 파일도 정확하다.
+    /// </param>
+    public MftRecordTable? ReadAll(bool showHidden, bool showSystem, bool physical, CancellationToken ct)
     {
         if (_volume == null) return null;
 
@@ -157,7 +161,7 @@ internal sealed class MftReader : IDisposable
                 {
                     var rec = buffer.AsSpan(r * _fileRecordSize, _fileRecordSize);
                     ParseRecord(rec, (int)globalRecord, parent, size, time, created, accessed, attrs,
-                        nameHandle, flags, pool, nameBuf, showHidden, showSystem);
+                        nameHandle, flags, pool, nameBuf, showHidden, showSystem, physical);
                 }
                 Volatile.Write(ref RecordsRead, globalRecord);
             }
@@ -289,7 +293,7 @@ internal sealed class MftReader : IDisposable
     private void ParseRecord(Span<byte> record, int index,
         int[] parent, long[] size, long[] time, long[] created, long[] accessed, uint[] attrs,
         long[] nameHandle, byte[] flags,
-        StringPool pool, Span<char> nameBuf, bool showHidden, bool showSystem)
+        StringPool pool, Span<char> nameBuf, bool showHidden, bool showSystem, bool physical)
     {
         parent[index] = -1;
 
@@ -366,14 +370,17 @@ internal sealed class MftReader : IDisposable
             {
                 if (!nonResident)
                 {
-                    dataSize = BinaryPrimitives.ReadUInt32LittleEndian(record[(pos + 0x10)..]);
+                    // 상주 $DATA: 내용이 MFT 레코드 안에 들어 있어 클러스터를 <b>하나도</b> 쓰지 않는다.
+                    // 물리 기준이면 0 이 정답이다(탐색기의 "디스크 할당 크기"도 0 을 보여 준다).
+                    dataSize = physical ? 0 : BinaryPrimitives.ReadUInt32LittleEndian(record[(pos + 0x10)..]);
                 }
                 else
                 {
                     long startVcn = BinaryPrimitives.ReadInt64LittleEndian(record[(pos + 0x10)..]);
-                    // 조각난 파일은 $DATA 가 여러 레코드로 나뉘는데 실제 크기는 startVCN==0 조각에만 들어 있다.
+                    // 조각난 파일은 $DATA 가 여러 레코드로 나뉘는데 크기는 startVCN==0 조각에만 들어 있다.
+                    // 0x28 = 할당 크기(압축/스파스면 실제 점유량), 0x30 = 논리 크기.
                     if (startVcn == 0)
-                        dataSize = BinaryPrimitives.ReadInt64LittleEndian(record[(pos + 0x30)..]);
+                        dataSize = BinaryPrimitives.ReadInt64LittleEndian(record[(pos + (physical ? 0x28 : 0x30))..]);
                 }
             }
 

@@ -549,6 +549,8 @@ dist/DiskAnalyzer.Bench.exe C:\                      # 전체 드라이브
 dist/DiskAnalyzer.Bench.exe C:\Users --sweep         # 워커 수 스윕
 dist/DiskAnalyzer.Bench.exe C:\ --mode fast          # NTFS Fast Scan (관리자 권한 필요)
 dist/DiskAnalyzer.Bench.exe C:\Users --exclude ".git" --exclude "*.iso"   # 제외 규칙 적용
+dist/DiskAnalyzer.Bench.exe C:\Windows --dedupe                          # 하드 링크 한 번만
+dist/DiskAnalyzer.Bench.exe C:\Windows --physical                        # 디스크 할당 크기로
 dist/DiskAnalyzer.Bench.exe --gen D:\bench 1000000   # 합성 트리 생성
 ```
 
@@ -558,8 +560,36 @@ dist/DiskAnalyzer.Bench.exe --gen D:\bench 1000000   # 합성 트리 생성
 ## 14. 설정
 
 Scan Mode(Auto/Fast/Compatibility) · Worker Count(Auto/수동) · Follow Symbolic Links ·
+**크기 기준**(논리/물리) · **하드 링크 한 번만 세기**(아래 14.2) ·
 Show Hidden/System Files · UI Theme(Daisy/Dark/Light/시스템) · Size Unit(Auto/KB/MB/GB/TB) · Cache Results ·
 **스캔 제외 규칙**(아래 14.1)
+
+### 14.2 크기 기준과 하드 링크 — 숫자를 정확하게
+
+둘 다 **기본은 꺼짐**이다. 지금까지의 실측 수치가 논리 · 중복 포함 기준이라 기본값을 바꾸면 비교 대상이 사라진다.
+
+| 설정 | 무엇이 달라지나 |
+|---|---|
+| **크기 기준 = 물리** | 탐색기의 "디스크 할당 크기" 기준. NTFS 압축 폴더 · 스파스 파일이 부풀지 않는다.<br>Fast(MFT)는 `$DATA` 헤더에 할당 크기가 이미 있어 **추가 비용 0**. 상주 `$DATA`(작은 파일)는 클러스터를 안 쓰므로 0이 정답이다.<br>열거 스캔은 대부분 클러스터 올림으로 끝내고 압축 · 스파스만 실제로 묻는다 |
+| **하드 링크 한 번만 세기** | 같은 실체가 여러 경로에 걸려 있으면 처음 것만 세고 나머지는 0 바이트. 항목 자체는 남는다.<br>**실측 `C:\\Windows` 205,388개: 44.3 GB → 34.3 GB** — 10 GB가 같은 바이트의 중복이었다(`WinSxS` → `System32`) |
+
+**id 를 Dictionary 로 들 수 없다.** 2,913만 파일이면 id 하나에 8B씩만 잡아도 해시 부하까지 1GB를 넘긴다.
+NTFS 파일 id 는 `(시퀀스 << 48) | MFT 레코드 번호` 라 **하위 48비트가 조밀한 정수**여서,
+그 번호를 비트 자리로 쓰는 비트맵이면 레코드 3,200만 개에 **4MB** 다(`HardLinkFilter`).
+여러 워커가 `Interlocked.Or` 로 찍고 **찍기 전 값**을 받아 "내가 처음인가"를 한 번에 판정한다 —
+확인 후 찍는 두 단계가 아니다.
+
+**값**: 둘 중 하나라도 켜면 열거를 `FindFirstFileEx` 에서 `FileIdBothDirectoryInfo` 로 바꾼다.
+앞엓것은 파일 id 도 할당 크기도 주지 않아 파일마다 따로 물어봐야 하지만, 뒤엓것은 한 번의 호출로
+여러 항목을 주면서 둘 다 담고 있다.
+
+| 대상 | 기본 | 켜 뒤 | 해석 |
+|---|---:|---:|---|
+| 287,413 파일 (웸 캐시) | 723,928 files/s | 331,262 files/s | CPU 로 도는 구간이라 **2.2배 느리다** |
+| `C:\\Windows` 205,388 파일 | 26,060 files/s | 32,405 files/s | 실제 디스크를 읽는 구간에서는 **오히려 빠르다**(syscall 수 감소) |
+
+> Fast(MFT) 스캔은 **레코드 하나가 곰 파일 하나**라 이 설정과 무관하게 언제나 하드 링크를 한 번만 세다.
+> 그래서 설정을 끔 채로 Fast 와 Compatibility 를 비교하면 같은 디스크인데 합계가 다르게 나온다.
 
 ### 14.1 스캔 제외 — 안 읽을 것을 정한다
 
