@@ -74,13 +74,25 @@ public sealed class SunburstLayout
 {
     private static readonly SunburstSegment[] Empty = [];
 
-    private SunburstLayout(IReadOnlyList<SunburstSegment> segments, int dirId, long total, string rootName)
+    private SunburstLayout(IReadOnlyList<SunburstSegment> segments, int dirId, long total, string rootName,
+                           int maxRings = 1)
     {
         Segments = segments;
         DirectoryId = dirId;
         TotalSize = total;
         RootName = rootName;
+        MaxRings = Math.Max(1, maxRings);
     }
+
+    /// <summary>
+    /// 그릴 수 있는 최대 겹 수(<see cref="SunburstOptions.Rings"/>).
+    ///
+    /// <para>그리는 쪽은 <b>실제로 나온 겹 수가 아니라 이 값으로</b> 한 겹의 두께를 정해야 한다.
+    /// 나온 만큼으로 나누면 얕은 폴더에서 겹이 뚱뚱해지고, 폴더를 옮길 때마다 두께가 달라져
+    /// 두께가 아무 뜻도 없는 신호가 된다. 원본은 두께가 고정이고 대신 <b>바깥 테두리가 들쭉날쭉</b>하다 —
+    /// 깊은 방향은 멀리 가고 얕은 방향은 일찍 끝난다.</para>
+    /// </summary>
+    public int MaxRings { get; }
 
     /// <summary>안쪽 겹부터 차례로. 같은 겹 안에서는 각도 오름차순이다.</summary>
     public IReadOnlyList<SunburstSegment> Segments { get; }
@@ -104,7 +116,7 @@ public sealed class SunburstLayout
 
         long total = store.GetDirectorySize(dirId);
         string rootName = dirId == NodeStore.RootId ? store.RootPath : store.GetDirectoryName(dirId);
-        if (total <= 0) return new SunburstLayout(Empty, dirId, 0, rootName);
+        if (total <= 0) return new SunburstLayout(Empty, dirId, 0, rootName, options.Rings);
 
         var segments = new List<SunburstSegment>(256);
         var scratch = new ChildScratch();
@@ -190,7 +202,7 @@ public sealed class SunburstLayout
             (level, next) = (next, level);
         }
 
-        return new SunburstLayout(segments, dirId, total, rootName);
+        return new SunburstLayout(segments, dirId, total, rootName, options.Rings);
     }
 
     /// <summary>
@@ -203,7 +215,7 @@ public sealed class SunburstLayout
 
         long denom = 0;
         foreach (var r in rows) denom += r.Size;
-        if (denom <= 0) return new SunburstLayout(Empty, -1, 0, name);
+        if (denom <= 0) return new SunburstLayout(Empty, -1, 0, name, options.Rings);
 
         var segments = new List<SunburstSegment>(Math.Min(rows.Count + 1, 512));
         double angle = 0;
@@ -250,7 +262,7 @@ public sealed class SunburstLayout
             });
         }
 
-        return new SunburstLayout(segments, -1, denom, name);
+        return new SunburstLayout(segments, -1, denom, name, options.Rings);
     }
 
     /// <summary>

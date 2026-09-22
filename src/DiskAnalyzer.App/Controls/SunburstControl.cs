@@ -30,13 +30,19 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
     private const double HoleRatio = 0.20d;
 
     /// <summary>
-    /// 이 겹까지는 두께가 같고, 그 바깥은 <see cref="OuterRingScale"/> 배로 얇아진다.
-    /// 원본 실측: 안쪽 다섯 겹이 21px, 그 다음이 13 · 13 · 8px 이다.
-    /// 깊은 곳을 버리지 않으면서도 바깥으로 갈수록 힘을 빼 그림이 번지지 않게 한다.
+    /// 겹별 두께 배율. 안쪽 다섯 겹은 두께가 같고, 그 바깥은 <b>겹마다 더</b> 얇아진다.
+    ///
+    /// <para>처음에 바깥을 일괄 0.6배로 두었더니 6·7·8겹이 여전히 두꺼웠다 —
+    /// 남은 반지름을 채우도록 한 칸 두께를 역산하기 때문에, 배율이 같으면 바깥 세 겹이
+    /// 통째로 굵어진다. 원본 실측 비율(21 : 13 : 13 : 8 → 1 : 0.62 : 0.62 : 0.38)보다
+    /// 조금 더 빠르게 줄여 바깥으로 갈수록 확실히 힘이 빠지게 했다.</para>
     /// </summary>
-    private const int FullWidthRings = 5;
+    private static readonly double[] RingScales = { 1d, 1d, 1d, 1d, 1d, 0.55d, 0.38d, 0.26d };
 
-    private const double OuterRingScale = 0.6d;
+    /// <summary>표 바깥 겹(9겹 이상)의 두께 배율. 실제로는 여기까지 오는 트리가 드물다.</summary>
+    private const double BeyondTableScale = 0.2d;
+
+    private static double ScaleOf(int ring) => ring < RingScales.Length ? RingScales[ring] : BeyondTableScale;
 
     /// <summary>겹 사이 간격(px). 배경이 비치는 것이 아니라 경계가 보일 만큼만.</summary>
     private const double RingGap = 1.5d;
@@ -267,10 +273,20 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         int rings = 1;
         foreach (var s in _layout.Segments) rings = Math.Max(rings, s.Ring + 1);
 
-        // 안쪽은 제 두께, 바깥은 얇게. 전체를 더한 값이 남은 반지름과 맞도록 한 칸의 두께를 역산한다.
-        double units = Math.Min(rings, FullWidthRings) + Math.Max(0, rings - FullWidthRings) * OuterRingScale;
+        // 두께는 "나온 겹 수" 가 아니라 "그릴 수 있는 최대 겹 수" 로 나눈다.
+        // 나온 만큼으로 채우면 얕은 폴더에서 겹이 뚱뚱해지고, 폴더를 옮길 때마다 두께가 바뀐다.
+        // 고정해 두면 대신 바깥 테두리가 들쭉날쭉해지는데, 그게 원본의 모습이고
+        // "이 방향은 깊고 저 방향은 얕다" 를 그림이 그대로 말해 준다.
+        int slots = Math.Max(rings, _layout.MaxRings);
+
+        double units = 0;
+        for (int k = 0; k < slots; k++) units += ScaleOf(k);
         _ringWidth = (outer - _hole) / units;
         _ringCount = rings;
+
+        _ringStart = new double[slots + 1];
+        _ringStart[0] = _hole;
+        for (int k = 0; k < slots; k++) _ringStart[k + 1] = _ringStart[k] + ScaleOf(k) * _ringWidth;
 
         int n = _layout.Segments.Count;
         _geometry = new Geometry[n];
@@ -321,14 +337,11 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
     }
 
     private int _ringCount = 1;
+    private double[] _ringStart = [];
 
-    /// <summary><paramref name="ring"/> 번째 겹이 시작하는 반지름. 다섯 겹까지는 제 두께, 그 바깥은 얇다.</summary>
+    /// <summary><paramref name="ring"/> 번째 겹이 시작하는 반지름. Rebuild 에서 쌓아 둔 값을 읽는다.</summary>
     private double RadiusAt(int ring)
-    {
-        double full = Math.Min(ring, FullWidthRings);
-        double thin = Math.Max(0, ring - FullWidthRings) * OuterRingScale;
-        return _hole + (full + thin) * _ringWidth;
-    }
+        => ring < _ringStart.Length ? _ringStart[ring] : (_ringStart.Length > 0 ? _ringStart[^1] : _hole);
 
     /// <summary>12시 방향 0°, 시계 방향. 화면 좌표는 y 가 아래로 자라므로 cos/sin 을 그대로 쓰면 된다.</summary>
     private Point Polar(double radius, double degrees)
