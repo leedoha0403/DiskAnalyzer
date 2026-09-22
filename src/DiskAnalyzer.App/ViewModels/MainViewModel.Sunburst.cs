@@ -28,6 +28,9 @@ public sealed class SunburstSidebarRow
 
     /// <summary>눌러서 들어갈 수 있는 줄인가.</summary>
     public bool CanNavigate => IsDirectory && Id >= 0;
+
+    /// <summary>화면 낭독기와 UI 자동화가 읽는 이름. 두지 않으면 타입 이름이 그대로 읽힌다.</summary>
+    public override string ToString() => $"{Name} {SizeText}";
 }
 
 /// <summary>드라이브 목록에 고정된 스캔 대상 하나.</summary>

@@ -49,6 +49,11 @@ public sealed class TreemapControl : FrameworkElement
     {
         ClipToBounds = true;
         Focusable = true;
+
+        // 선버스트와 같은 이유. DrawText 는 창의 TextOptions 를 물려받지 않아
+        // 어두운 사각형 위의 흰 라벨에 ClearType 색 가장자리가 남는다.
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.Grayscale);
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
     }
 
     public static readonly DependencyProperty StrokeBrushProperty = DependencyProperty.Register(

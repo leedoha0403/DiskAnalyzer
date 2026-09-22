@@ -71,6 +71,12 @@ public sealed class SunburstControl : FrameworkElement
     {
         ClipToBounds = true;
         Focusable = true;
+
+        // OnRender 의 DrawText 는 창에 건 TextOptions 를 물려받지 않는다. 어두운 바탕에 밝은 글자를
+        // ClearType 으로 그리면 획 양쪽에 주황 / 청록 가장자리가 떠서 글자가 물든 것처럼 보인다.
+        // 회색조 안티에일리어싱은 색을 만들지 않는다.
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.Grayscale);
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
     }
 
     // ---------------------------------------------------------------- 색

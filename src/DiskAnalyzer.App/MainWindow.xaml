@@ -611,8 +611,7 @@
                             Background="{DynamicResource SurfaceBrush}"
                             BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0"
                             Visibility="Collapsed">
-                        <ListBox x:Name="CollectorList" Background="Transparent" BorderThickness="0" Padding="8,6"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox x:Name="CollectorList" Style="{StaticResource PlainList}" Padding="8,6">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Margin="4,2">
@@ -801,9 +800,8 @@
 
                                     <ListBox x:Name="SunburstList" ItemsSource="{Binding SunburstSidebar}"
                                              AutomationProperties.AutomationId="SunburstSidebar"
-                                             Background="Transparent" BorderThickness="0"
-                                             MouseDoubleClick="OnSunburstSidebarActivate"
-                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                             Style="{StaticResource PlainList}"
+                                             MouseDoubleClick="OnSunburstSidebarActivate">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate>
                                                 <Grid Margin="0,1" ToolTip="{Binding Tooltip}">
@@ -823,8 +821,7 @@
                                             </DataTemplate>
                                         </ListBox.ItemTemplate>
                                         <ListBox.ItemContainerStyle>
-                                            <Style TargetType="ListBoxItem">
-                                                <Setter Property="Padding" Value="4,2" />
+                                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource PlainListItem}">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsDim}" Value="True">
                                                         <Setter Property="Opacity" Value="0.58" />

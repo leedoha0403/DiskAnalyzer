@@ -22,6 +22,9 @@ public sealed class CollectedItem
 
     /// <summary>P1 은 담기되 눈에 띄게 표시한다 — 담는 것과 지우는 것은 다른 행동이다.</summary>
     public bool IsRisky => Level == ProtectionLevel.P1;
+
+    /// <summary>화면 낭독기와 UI 자동화가 읽는 이름. 두지 않으면 타입 이름이 그대로 읽힌다.</summary>
+    public override string ToString() => $"{BadgeText} {FullPath} {SizeText}";
 }
 
 /// <summary><see cref="Collector.TryAdd"/> 가 왜 그렇게 됐는지.</summary>
