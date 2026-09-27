@@ -1,4 +1,6 @@
 .vs/
+.dotnet/
+.test-localappdata/
 bin/
 obj/
 dist/
