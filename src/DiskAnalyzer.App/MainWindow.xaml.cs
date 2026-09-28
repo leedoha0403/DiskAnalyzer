@@ -220,16 +220,20 @@ public partial class MainWindow : Window
             DockHost.Visibility = Visibility.Visible;
             DockSplitter.Visibility = Visibility.Visible;
             DockSplitterColumn.Width = GridLength.Auto;
-            DockColumn.MinWidth = MinDockWidth;
-            DockColumn.Width = new GridLength(_vm.QuickMove.DockWidth > 0 ? _vm.QuickMove.DockWidth : DefaultDockWidth);
+            DockColumn.MinWidth = 0d;
+            SetColumnWidth(DockColumn,
+                _vm.QuickMove.DockWidth > 0 ? _vm.QuickMove.DockWidth : DefaultDockWidth,
+                () => DockColumn.MinWidth = MinDockWidth);
             return;
         }
 
+        // 닫는 쪽은 흘리지 않는다. 바로 아래에서 패널을 탭으로 옮겨 가므로, 폭만 천천히 줄이면
+        // 내용이 빠져나간 빈 칸이 접히는 것만 보인다 — 없는 편이 낫다.
         DockHost.Visibility = Visibility.Collapsed;
         DockSplitter.Visibility = Visibility.Collapsed;
         DockSplitterColumn.Width = new GridLength(0);
         DockColumn.MinWidth = 0;
-        DockColumn.Width = new GridLength(0);
+        Motion.WidthNow(DockColumn, 0d);
 
         if (!ReferenceEquals(QuickMovePanel.Parent, TabHost))
         {
@@ -339,6 +343,27 @@ public partial class MainWindow : Window
             SplitterColumn.Width = new GridLength(0);
             TreemapColumn.Width = treemap ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         }
+
+        _shellSettled = true;
+    }
+
+    /// <summary>
+    /// 첫 배치가 끝났는가. 앱을 켜는 순간 접혀 있던 사이드바가 스르르 닫히는 것은 연출이 아니라
+    /// "방금 뭐가 움직였지?" 가 된다 — 처음 한 번은 흘리지 않고 제자리에 놓는다.
+    /// </summary>
+    private bool _shellSettled;
+
+    /// <summary>칸 폭을 옮긴다. 첫 배치에서만 즉시, 그 뒤로는 <see cref="Motion"/> 의 규칙을 따른다.</summary>
+    private void SetColumnWidth(System.Windows.Controls.ColumnDefinition column, double px, Action? done = null)
+    {
+        if (_shellSettled)
+        {
+            Motion.Width(column, px, done);
+            return;
+        }
+
+        Motion.WidthNow(column, px);
+        done?.Invoke();
     }
 
     /// <summary>
@@ -350,14 +375,24 @@ public partial class MainWindow : Window
     {
         bool collapsed = _vm.SidebarCollapsed;
 
-        Sidebar.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
         SidebarSplitter.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
-        SidebarToggleFill.Opacity = collapsed ? 0d : 1d;
-
-        // 접을 때 MinWidth 를 먼저 풀지 않으면 칸이 0 으로 내려가지 않는다.
-        SidebarColumn.MinWidth = collapsed ? 0d : MainViewModel.MinSidebarWidth;
-        SidebarColumn.Width = collapsed ? new GridLength(0) : new GridLength(_vm.SidebarWidth);
         SidebarSplitterColumn.Width = collapsed ? new GridLength(0) : GridLength.Auto;
+        Motion.To(SidebarToggleFill, OpacityProperty, collapsed ? 0d : 1d, Motion.Quick);
+
+        // 폭이 줄어드는 동안에도 내용은 남아 있어야 한다. 먼저 숨기면 "접힌다"가 아니라
+        // "사라진 뒤 자리가 줄어든다"로 보인다 — 그래서 펼 때는 먼저 켜고, 접을 때는 다 접힌 뒤에 끈다.
+        if (!collapsed) Sidebar.Visibility = Visibility.Visible;
+
+        // 접는 동안에는 MinWidth 를 풀어 둔다. 풀지 않으면 칸이 0 으로 내려가지 않는다.
+        SidebarColumn.MinWidth = 0d;
+
+        SetColumnWidth(SidebarColumn, collapsed ? 0d : _vm.SidebarWidth, () =>
+        {
+            // 움직이는 사이에 다시 눌렀을 수 있다. 끝나는 시점의 상태로 맞춘다.
+            bool now = _vm.SidebarCollapsed;
+            Sidebar.Visibility = now ? Visibility.Collapsed : Visibility.Visible;
+            SidebarColumn.MinWidth = now ? 0d : MainViewModel.MinSidebarWidth;
+        });
     }
 
     private void OnSidebarSplitterDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)

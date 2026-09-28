@@ -90,12 +90,28 @@ public sealed class TreemapControl : FrameworkElement
     /// <summary>스캔 완료 후: 저장소를 직접 타고 내려가며 여러 단계를 그린다.</summary>
     public void SetSource(NodeStore? store, int dirId)
     {
-        if (dirId != _dirId) _selected.Clear();   // 다른 폴더로 옮겼으면 이전 선택 강조는 의미가 없다
+        int leaving = _dirId;
+        Rect? origin = null;
+
+        if (dirId != _dirId)
+        {
+            _selected.Clear();   // 다른 폴더로 옮겼으면 이전 선택 강조는 의미가 없다
+
+            // 들어간 폴더가 지금 화면 어디에 있었는가. 다시 그리기 전에 물어야 한다.
+            origin = RectOf(dirId);
+        }
+
         _store = store;
         _flatRows = null;
         _dirId = dirId;
         _lastLayoutSize = default;
         Rebuild();
+
+        // 들어간 자리가 없었다면 상위로 올라온 것이다 — 떠나온 폴더가 새 화면에서 차지한 자리를 찾는다.
+        if (origin == null && leaving != dirId && RectOf(leaving) is { } back)
+            origin = Widen(back, new Rect(0, 0, ActualWidth, ActualHeight));
+
+        BeginZoom(origin);
     }
 
     /// <summary>
@@ -107,6 +123,7 @@ public sealed class TreemapControl : FrameworkElement
         _store = null;
         _flatRows = rows;
         _lastLayoutSize = default;
+        StopMotion();
         Rebuild();
     }
 
@@ -115,7 +132,95 @@ public sealed class TreemapControl : FrameworkElement
         _items.Clear();
         _store = null;
         _flatRows = null;
+        StopMotion();
         InvalidateVisual();
+    }
+
+    // ---------------------------------------------------------------- 50. 움직임
+
+    /// <summary>폴더를 드나드는 줌. 0 = 출발한 사각형 안, 1 = 화면 전체.</summary>
+    private static readonly DependencyProperty TransitionProperty = DependencyProperty.Register(
+        nameof(Transition), typeof(double), typeof(TreemapControl),
+        new FrameworkPropertyMetadata(1d, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    private double Transition => (double)GetValue(TransitionProperty);
+
+    /// <summary>t=0 에서 새 화면이 들어 있을 자리.</summary>
+    private Rect _zoomFrom;
+
+    /// <summary>상위로 올라갈 때 화면이 이보다 더 크게 벌어지지는 않는다 — 작은 조각에서 올라오면 눈이 멀미한다.</summary>
+    private const double MaxZoomOut = 12d;
+
+    /// <summary>출발 사각형을 목적지 쪽으로 미리 당겨 두는 비율. 0 이면 원래 자리에서, 1 이면 아예 움직이지 않는다.</summary>
+    private const double ZoomRestraint = 0.72d;
+
+    /// <summary>걸려 있던 줌을 걷는다. 설정에서 애니메이션을 끄는 순간 반쯤 펴진 채로 멈추면 안 된다.</summary>
+    public void StopMotion()
+    {
+        Motion.Settle(this, TransitionProperty, 1d);
+        _zoomFrom = default;
+    }
+
+    /// <summary>
+    /// 트리맵의 줌에는 선버스트에 없는 것이 있다 — <b>출발한 사각형</b>.
+    /// 방금 누른 폴더가 있던 자리에서 화면 전체로 펴지면, 새 화면이 그 폴더의 안쪽이라는 것이
+    /// 설명 없이 읽힌다. 상위로 올라갈 때는 거꾸로, 화면 전체가 있던 자리의 크기로 접힌다.
+    /// </summary>
+    private void BeginZoom(Rect? origin)
+    {
+        if (!Motion.Enabled || origin is not { Width: > 1d, Height: > 1d } from ||
+            ActualWidth < 8 || ActualHeight < 8)
+        {
+            StopMotion();
+            return;
+        }
+
+        // 사각형에서 화면 전체까지 통째로 펴면 배율이 수십 배가 되어 화면이 터져 나오는 것처럼 보인다.
+        // 출발점을 목적지 쪽으로 미리 당겨 두면 "어디서 왔는지"는 남고 출렁임만 빠진다.
+        _zoomFrom = Between(from, new Rect(0, 0, ActualWidth, ActualHeight), ZoomRestraint);
+        Motion.From(this, TransitionProperty, 0d, 1d, Motion.Normal, Motion.Ease);
+    }
+
+    /// <summary>
+    /// <paramref name="target"/> 가 화면을 가득 채우게 하는 자리. 들어갈 때 쓰는 대응의 역이다.
+    /// 너무 작은 사각형에서 올라오면 배율이 터무니없어지므로 그때는 줌을 포기한다(null).
+    /// </summary>
+    private static Rect? Widen(Rect target, Rect area)
+    {
+        if (target.Width < 6d || target.Height < 6d || area.Width < 8d || area.Height < 8d) return null;
+
+        double sx = area.Width / target.Width, sy = area.Height / target.Height;
+        if (sx > MaxZoomOut || sy > MaxZoomOut) return null;
+
+        return new Rect(-target.X * sx, -target.Y * sy, area.Width * sx, area.Height * sy);
+    }
+
+    private Rect? RectOf(int directoryId)
+    {
+        foreach (var item in _items)
+            if (item.IsDirectory && item.Id == directoryId) return item.Bounds;
+        return null;
+    }
+
+    private static Rect Between(Rect a, Rect b, double t) => new(
+        a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t,
+        Math.Max(0.01d, a.Width + (b.Width - a.Width) * t),
+        Math.Max(0.01d, a.Height + (b.Height - a.Height) * t));
+
+    /// <summary>줌을 건다. 되돌릴 Pop 횟수를 준다.</summary>
+    private int PushTransition(DrawingContext dc)
+    {
+        double t = Transition;
+        if (t >= 1d || _zoomFrom.Width <= 0d || _zoomFrom.Height <= 0d) return 0;
+
+        var area = new Rect(0, 0, ActualWidth, ActualHeight);
+        if (area.Width < 8d || area.Height < 8d) return 0;
+
+        // 자리와 크기만 바꾼다. 선버스트와 같은 이유로 투명도 층은 걸지 않는다 —
+        // 층이 걷히는 마지막 프레임에 사각형 경계가 전부 다시 안티에일리어싱되어 한 번 반짝인다.
+        var r = Between(_zoomFrom, area, t);
+        dc.PushTransform(new MatrixTransform(r.Width / area.Width, 0d, 0d, r.Height / area.Height, r.X, r.Y));
+        return 1;
     }
 
     protected override void OnRenderSizeChanged(SizeChangedInfo info)
@@ -279,6 +384,8 @@ public sealed class TreemapControl : FrameworkElement
             return;
         }
 
+        int pushed = PushTransition(dc);
+
         var pen = new Pen(StrokeBrush, 1d);
         pen.Freeze();
         _typeface ??= new Typeface(new FontFamily("Segoe UI, Malgun Gothic"),
@@ -331,6 +438,8 @@ public sealed class TreemapControl : FrameworkElement
             hp.Freeze();
             dc.DrawRectangle(null, hp, _hovered.Bounds);
         }
+
+        for (int i = 0; i < pushed; i++) dc.Pop();
     }
 
     private void DrawCentered(DrawingContext dc, string message)

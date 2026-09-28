@@ -144,6 +144,8 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
     /// <summary>스캔이 끝난 뒤: 저장소를 타고 내려가며 여러 겹을 만든다.</summary>
     public void SetSource(NodeStore? store, int dirId, SunburstOptions? options = null)
     {
+        var previous = _layout;
+
         _store = store;
         _layout = SunburstLayout.Build(store, dirId, options);
         CenterName = store == null || dirId < 0
@@ -154,7 +156,18 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         _hoverIndex = -1;
         _focusIndex = -1;
         _lastSize = default;
+
+        // 조각 번호가 통째로 밀린다. 밝기도 함께 접지 않으면 엉뚱한 조각이 밝은 채로 남는다.
+        _glowIndex = -1;
+        Motion.Settle(this, GlowProperty, 0d);
+
+        // 스캔 중의 각도 보간과 폴더를 드나드는 줌은 같은 화면에서 겹치지 않는다.
+        _morphFrom = null;
+        _morphGeometry = null;
+        _fillFading = null;
+
         Rebuild();
+        BeginZoom(previous);
     }
 
     /// <summary>
@@ -163,6 +176,8 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
     /// </summary>
     public void SetFlatSource(IReadOnlyList<EntryRow> rows, string name)
     {
+        var previous = _layout;
+
         _store = null;
         _layout = SunburstLayout.BuildFlat(rows, name);
         CenterName = name;
@@ -170,7 +185,12 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         _hoverIndex = -1;
         _focusIndex = -1;
         _lastSize = default;
+        _fillFading = null;
+        _glowIndex = -1;
+        Motion.Settle(this, GlowProperty, 0d);
+
         Rebuild();
+        BeginMorph(previous);
     }
 
     public void Clear()
@@ -183,6 +203,7 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         _selected.Clear();
         _hoverIndex = -1;
         _focusIndex = -1;
+        StopMotion();
         InvalidateVisual();
     }
 
@@ -205,10 +226,13 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
                         IReadOnlyDictionary<long, int>? scores = null,
                         IReadOnlyDictionary<long, long>? previous = null)
     {
+        var wasFilledWith = _fill;
+
         _tint = tint;
         _scores = scores;
         _previous = previous;
         RebuildBrushes();
+        BeginTintFade(wasFilledWith);
         InvalidateVisual();
     }
 
@@ -383,6 +407,290 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         return geo;
     }
 
+    // ---------------------------------------------------------------- 50. 움직임
+
+    /// <summary>
+    /// 폴더를 드나드는 줌. 0 = 출발(들어갔으면 작게, 나왔으면 크게), 1 = 제자리.
+    /// 그림 전체를 한 번 감싸는 변환이라 조각 수와 무관하게 비용이 일정하다.
+    /// </summary>
+    private static readonly DependencyProperty TransitionProperty = DependencyProperty.Register(
+        nameof(Transition), typeof(double), typeof(SunburstControl),
+        new FrameworkPropertyMetadata(1d, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    /// <summary>가리킨 조각이 밝아진 정도. 0 = 원래 색, 1 = 강조색.</summary>
+    private static readonly DependencyProperty GlowProperty = DependencyProperty.Register(
+        nameof(Glow), typeof(double), typeof(SunburstControl),
+        new FrameworkPropertyMetadata(0d, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    /// <summary>새 색이 옛 색 위로 떠오른 정도. 1 이면 옛 색은 이미 지워졌다.</summary>
+    private static readonly DependencyProperty TintBlendProperty = DependencyProperty.Register(
+        nameof(TintBlend), typeof(double), typeof(SunburstControl),
+        new FrameworkPropertyMetadata(1d, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    /// <summary>스캔 중, 각도가 옛 자리에서 새 자리로 옮겨 간 정도.</summary>
+    private static readonly DependencyProperty MorphProperty = DependencyProperty.Register(
+        nameof(Morph), typeof(double), typeof(SunburstControl),
+        new FrameworkPropertyMetadata(1d, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    private double Transition => (double)GetValue(TransitionProperty);
+    private double Glow => (double)GetValue(GlowProperty);
+    private double TintBlend => (double)GetValue(TintBlendProperty);
+    private double Morph => (double)GetValue(MorphProperty);
+
+    /// <summary>
+    /// 각도 보간은 프레임마다 조각 기하를 다시 만든다. 스캔 중 한 겹은 보통 수십 개지만,
+    /// 그 이상으로 늘어나면 스캔이 느려지는 쪽이 손해다 — 넘으면 조용히 끈다.
+    /// </summary>
+    private const int MorphSegmentLimit = 200;
+
+    /// <summary>줌은 조각 수와 무관하지만, 조각이 수천 개면 한 프레임이 이미 무겁다.</summary>
+    private const int ZoomSegmentLimit = 3000;
+
+    private double _zoomFrom = 1d;
+    private Brush[]? _fillFading;
+    private (double Start, double Sweep)[]? _morphFrom;
+    private Geometry[]? _morphGeometry;
+
+    /// <summary>
+    /// 지금 밝아져 있는 조각. <see cref="_hoverIndex"/> 와 따로 두는 이유는 <b>꺼지는 동안</b> 때문이다 —
+    /// 마우스가 링을 벗어나면 가리킨 조각은 즉시 없어지지만, 밝기는 아직 돌아오는 중이라
+    /// 그동안 누구를 칠할지 알아야 한다. 이것이 없으면 들어올 때만 부드럽고 나갈 때는 툭 꺼진다.
+    /// </summary>
+    private int _glowIndex = -1;
+
+    /// <summary>
+    /// 걸려 있던 연출을 전부 걷고 제자리로 돌린다.
+    /// 설정에서 애니메이션을 끄는 순간 반쯤 줌인된 채로 멈춰 있으면 안 된다.
+    /// </summary>
+    public void StopMotion()
+    {
+        Motion.Settle(this, TransitionProperty, 1d);
+        Motion.Settle(this, GlowProperty, 0d);
+        _glowIndex = -1;
+        Motion.Settle(this, TintBlendProperty, 1d);
+        Motion.Settle(this, MorphProperty, 1d);
+
+        _fillFading = null;
+        _morphFrom = null;
+        _morphGeometry = null;
+    }
+
+    /// <summary>
+    /// 폴더를 드나들 때의 줌. <b>어느 쪽으로 움직였는지는 두 레이아웃이 말해 준다</b> —
+    /// 부르는 쪽이 "들어간다 / 나온다"를 따로 알려 주지 않아도 된다.
+    /// </summary>
+    private void BeginZoom(SunburstLayout previous)
+    {
+        if (!Motion.Enabled || _layout.Segments.Count > ZoomSegmentLimit)
+        {
+            Motion.Settle(this, TransitionProperty, 1d);
+            return;
+        }
+
+        // 처음에는 0.72 / 1.34 배에서 출발했는데, 폴더를 몇 번만 타고 내려가도 화면이 계속
+        // 크게 출렁여 멀미가 났다. 방향만 읽히면 되는 연출이라 폭을 10% 안쪽으로 줄였다.
+        _zoomFrom = Relation(previous, _layout) switch
+        {
+            // 들어갔다: 안쪽에서 조금 자라 나온다.
+            -1 => 0.93d,
+            // 나왔다: 한 발 물러난다.
+            1 => 1.08d,
+            // 이어지지 않는 화면(새 스캔 · 경로 직접 입력): 방향을 지어내지 않고 살짝 떠오르기만 한다.
+            _ => 0.98d,
+        };
+
+        Motion.From(this, TransitionProperty, 0d, 1d, Motion.Normal, Motion.Ease);
+    }
+
+    /// <summary>-1 = 안으로 들어갔다, 1 = 밖으로 나왔다, 0 = 이어지지 않는 화면.</summary>
+    private static int Relation(SunburstLayout from, SunburstLayout to)
+    {
+        if (from.IsEmpty || to.IsEmpty || from.DirectoryId == to.DirectoryId) return 0;
+        if (HasDirectory(from, to.DirectoryId)) return -1;
+        if (HasDirectory(to, from.DirectoryId)) return 1;
+        return 0;
+    }
+
+    private static bool HasDirectory(SunburstLayout layout, int directoryId)
+    {
+        if (directoryId < 0) return false;
+        foreach (var s in layout.Segments)
+            if (s.Kind == SunburstKind.Directory && s.Id == directoryId) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// 스캔 중에는 150ms 마다 한 겹이 통째로 다시 배분된다. 그대로 그리면 조각들이 매번 툭 하고
+    /// 자리를 바꾼다 — 각도를 옛 자리에서 새 자리로 흘려 보내면 <b>링이 자라는 것</b>으로 보인다.
+    /// 처음 나타난 조각은 제 자리에서 폭 0 으로 열린다.
+    /// </summary>
+    private void BeginMorph(SunburstLayout previous)
+    {
+        int n = _layout.Segments.Count;
+
+        if (!Motion.Enabled || n == 0 || n > MorphSegmentLimit || previous.IsEmpty)
+        {
+            _morphFrom = null;
+            _morphGeometry = null;
+            Motion.Settle(this, MorphProperty, 1d);
+            return;
+        }
+
+        var before = new Dictionary<long, (double Start, double Sweep)>(previous.Segments.Count);
+        foreach (var s in previous.Segments) before[MorphKey(s)] = (s.Start, s.Sweep);
+
+        _morphFrom = new (double Start, double Sweep)[n];
+        for (int i = 0; i < n; i++)
+        {
+            var s = _layout.Segments[i];
+            _morphFrom[i] = before.TryGetValue(MorphKey(s), out var was) ? was : (s.Start, 0d);
+        }
+
+        // 스냅샷 간격(150ms)보다 조금 길다. 다음 스냅샷이 올 때까지 멈추지 않아 링이 끊기지 않고 자란다.
+        Motion.From(this, MorphProperty, 0d, 1d, Motion.Normal, Motion.Smooth);
+    }
+
+    /// <summary>묶음 조각("작은 항목 N개")은 실체가 없어 Id 가 없다. 겹 번호로 이어 준다.</summary>
+    private static long MorphKey(SunburstSegment s)
+        => s.Id >= 0 ? KeyOf(s.Kind, s.Id) : -1L - s.Ring;
+
+    /// <summary>
+    /// 색 기준을 바꿀 때의 교차 페이드. 조각마다 색을 섞으면 프레임마다 브러시를 수천 개
+    /// 새로 만들어야 한다 — 옛 색을 한 번 깔고 그 위에 새 색을 통째로 띄우면 비용이 두 배로 끝난다.
+    /// </summary>
+    private void BeginTintFade(Brush[] previousFill)
+    {
+        // 색이 하나도 안 바뀌었으면 섞을 것이 없다.
+        //
+        // [왜 이 검사가 필요한가] 폴더를 옮길 때마다 창이 SetSource 바로 뒤에 SetTint 를 한 번 더 부른다
+        // (색 기준을 화면에 다시 적용하는 경로다). 기준이 "크기" 그대로면 옛 색과 새 색이 완전히 같은데도
+        // 교차 페이드가 260ms 동안 돌았다 — 그동안 반투명 묶음 조각이 진해져 <b>이동이 끝날 때
+        // 조각 몇 개가 반짝 빛났다</b>. 섞을 것이 없으면 아무것도 하지 않는 것이 맞다.
+        if (!Motion.Enabled || _fill.Length == 0 || previousFill.Length != _fill.Length ||
+            SameFill(previousFill, _fill))
+        {
+            _fillFading = null;
+            Motion.Settle(this, TintBlendProperty, 1d);
+            return;
+        }
+
+        _fillFading = previousFill;
+        Motion.From(this, TintBlendProperty, 0d, 1d, Motion.Slow, Motion.Smooth, () =>
+        {
+            _fillFading = null;
+            InvalidateVisual();
+        });
+    }
+
+    /// <summary>두 칠이 화면에 똑같이 나오는가. 하나라도 다르면 바로 거짓이다.</summary>
+    private static bool SameFill(Brush[] a, Brush[] b)
+    {
+        for (int i = 0; i < a.Length; i++)
+        {
+            if (a[i] is not SolidColorBrush x || b[i] is not SolidColorBrush y || x.Color != y.Color)
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// 가리킨 조각을 부드럽게 밝힌다.
+    ///
+    /// <para>처음에는 조각을 바깥으로 밀어냈는데(4px), 이 링은 조각이 수백 개라 밀려난 하나가
+    /// 이웃을 덮고 겹 사이 이음선이 벌어져 <b>링이 깨져 보였다</b>. 테두리까지 함께 밀어도
+    /// "조각 하나가 떠서 따로 논다"는 인상은 남는다 — 기하를 건드리지 않고 색만 옮긴다.</para>
+    ///
+    /// <para>조각과 조각 사이를 옮길 때는 0 으로 돌아갔다 오지 않는다. 강조가 커서를 즉시 따라가야지,
+    /// 매번 다시 밝아지면 손보다 화면이 느린 것처럼 느껴진다.</para>
+    /// </summary>
+    private void BeginGlow(int index)
+    {
+        if (index >= 0)
+        {
+            _glowIndex = index;
+            Motion.To(this, GlowProperty, 1d, Motion.Quick, Motion.Ease);
+            return;
+        }
+
+        if (_glowIndex < 0) return;
+
+        Motion.To(this, GlowProperty, 0d, Motion.Quick, Motion.Ease, () =>
+        {
+            // 꺼지는 사이에 다시 들어왔으면 지금 끝난 것은 지난 애니메이션이다. 값으로 판단한다.
+            if (Glow > 0.002d) return;
+            _glowIndex = -1;
+            InvalidateVisual();
+        });
+    }
+
+    /// <summary>밝아져 있는 조각의 지금 색. 원래 색과 강조색 사이를 <see cref="Glow"/> 만큼 지난 자리다.</summary>
+    private Brush HoverFill(int index)
+    {
+        double g = Math.Clamp(Glow, 0d, 1d);
+        if (g <= 0.002d) return _fill[index];
+
+        var lit = Lighten(_fill[index]);
+        if (g >= 0.998d || _fill[index] is not SolidColorBrush from || lit is not SolidColorBrush to)
+            return lit;
+
+        // 프레임마다 브러시 하나. 조각 전체를 섞는 것과 달리 이건 언제나 가리킨 하나뿐이다.
+        var mixed = new SolidColorBrush(Color.FromArgb(
+            Mix(from.Color.A, to.Color.A, g), Mix(from.Color.R, to.Color.R, g),
+            Mix(from.Color.G, to.Color.G, g), Mix(from.Color.B, to.Color.B, g)));
+        mixed.Freeze();
+        return mixed;
+    }
+
+    private static byte Mix(byte a, byte b, double t) => (byte)Math.Clamp(a + (b - a) * t, 0d, 255d);
+
+    /// <summary>이 프레임에서 쓸 기하와 밀림 벡터를 미리 정한다. 그리는 쪽은 계산하지 않는다.</summary>
+    private void PrepareFrame()
+    {
+        double morph = Morph;
+
+        if (_morphFrom != null && _morphFrom.Length == _geometry.Length && morph < 1d)
+        {
+            if (_morphGeometry == null || _morphGeometry.Length != _geometry.Length)
+                _morphGeometry = new Geometry[_geometry.Length];
+
+            for (int i = 0; i < _geometry.Length; i++)
+            {
+                var s = _layout.Segments[i];
+                var was = _morphFrom[i];
+                double start = was.Start + (s.Start - was.Start) * morph;
+                double sweep = was.Sweep + (s.Sweep - was.Sweep) * morph;
+
+                double r0 = RadiusAt(s.Ring);
+                double r1 = RadiusAt(s.Ring + 1) - RingGap;
+                _morphGeometry[i] = BuildSegment(r0, Math.Max(r0 + 0.5d, r1), start, Math.Max(0.02d, sweep));
+            }
+        }
+        else
+        {
+            _morphGeometry = null;
+            if (morph >= 1d) _morphFrom = null;
+        }
+
+    }
+
+    /// <summary>이 프레임에서 조각 <paramref name="index"/> 를 그릴 기하.</summary>
+    private Geometry GeometryAt(int index) => _morphGeometry?[index] ?? _geometry[index];
+
+    /// <summary>줌을 건다. 되돌릴 Pop 횟수를 준다.</summary>
+    private int PushTransition(DrawingContext dc)
+    {
+        double t = Transition;
+        if (t >= 1d) return 0;
+
+        // 크기만 바꾼다. 투명도는 걸지 않는다 —
+        // PushOpacity 는 내용을 중간 버퍼에 한 번 그린 뒤 합성하는데, 그 층이 <b>사라지는 마지막 프레임</b>에
+        // 모든 경계가 실제 배경 위로 다시 안티에일리어싱된다. 조각 수백 개의 링에서는 그 한 프레임이
+        // 조각 몇 개가 반짝 빛나는 것으로 보였다. 0.93 → 1 배면 크기만으로도 방향은 충분히 읽힌다.
+        double scale = _zoomFrom + (1d - _zoomFrom) * t;
+        dc.PushTransform(new ScaleTransform(scale, scale, _center.X, _center.Y));
+        return 1;
+    }
+
     // ---------------------------------------------------------------- 렌더
 
     protected override void OnRender(DrawingContext dc)
@@ -399,14 +707,38 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
             return;
         }
 
+        // 50. 이 프레임에 쓸 기하를 먼저 정한다. 아래 세 번의 순회는 모두 같은 자리를 본다.
+        PrepareFrame();
+
+        // 폴더를 드나드는 줌. 그림 전체를 한 번 감싸므로 조각마다 드는 비용이 없다.
+        int pushed = PushTransition(dc);
+
         var seam = new Pen(BackdropBrush, 0.8d);
         seam.Freeze();
 
-        for (int i = 0; i < _geometry.Length; i++)
+        // 색 기준을 바꾸는 중이면 옛 칠과 새 칠을 <b>각각 제 투명도로 감싸</b> 겹친다.
+        //
+        // [왜 그냥 위에 덧칠하면 안 되는가] 묶음 조각("작은 항목 N개")은 <b>알파 102 의 반투명</b>이다
+        // (SunburstPalette — "실체가 아니라 묶음"이라는 표시). 반투명한 것을 같은 자리에 두 번 칠하면
+        // 두 번째가 첫 번째 위에 쌓여 훨씬 진해진다. 그래서 색이 하나도 안 바뀌는 경우에도 페이드가 도는
+        // 동안 <b>반투명 조각만 골라 반짝 빛났다</b>. 층으로 나누면 (1-t)·옛 + t·새 가 되어
+        // 알파가 보존된다 — t 가 얼마든 묶음 조각은 늘 알파 102 그대로다.
+        double blend = Math.Clamp(TintBlend, 0d, 1d);
+        bool crossFade = _fillFading != null && _fillFading.Length == _geometry.Length && blend < 0.999d;
+
+        if (crossFade)
         {
-            var s = _layout.Segments[i];
-            var brush = i == _hoverIndex ? Lighten(_fill[i]) : _fill[i];
-            dc.DrawGeometry(brush, s.Sweep >= StrokeMinSweep ? seam : null, _geometry[i]);
+            dc.PushOpacity(1d - blend);
+            DrawFills(dc, _fillFading!, seam, withGlow: false);
+            dc.Pop();
+
+            dc.PushOpacity(blend);
+            DrawFills(dc, _fill, seam, withGlow: false);
+            dc.Pop();
+        }
+        else
+        {
+            DrawFills(dc, _fill, seam, withGlow: true);
         }
 
         DrawOutlines(dc, _collected, CollectedBrush, 2.2d);
@@ -415,26 +747,104 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         // 키보드 초점은 선택과 따로 그린다 - 마우스 없이 어디에 있는지 보여야 한다.
         if (_focusIndex >= 0 && _focusIndex < _geometry.Length)
         {
-            var pen = new Pen(LabelBrush, 2.4d);
-            pen.Freeze();
-            dc.DrawGeometry(null, pen, _geometry[_focusIndex]);
+            DrawOutline(dc, LabelBrush, _focusIndex, 2.4d);
         }
 
         DrawCenter(dc);
+
+        for (int i = 0; i < pushed; i++) dc.Pop();
+    }
+
+    /// <summary>조각 채우기 한 벌.</summary>
+    private void DrawFills(DrawingContext dc, Brush[] fill, Pen seam, bool withGlow)
+    {
+        for (int i = 0; i < _geometry.Length; i++)
+        {
+            var s = _layout.Segments[i];
+            var brush = withGlow && i == _glowIndex ? HoverFill(i) : fill[i];
+            dc.DrawGeometry(brush, s.Sweep >= StrokeMinSweep ? seam : null, GeometryAt(i));
+        }
     }
 
     private void DrawOutlines(DrawingContext dc, HashSet<long> keys, Brush brush, double thickness)
     {
         if (keys.Count == 0) return;
-        var pen = new Pen(brush, thickness);
-        pen.Freeze();
 
         for (int i = 0; i < _geometry.Length; i++)
         {
             var s = _layout.Segments[i];
             if (s.Id < 0 || !keys.Contains(KeyOf(s.Kind, s.Id))) continue;
-            dc.DrawGeometry(null, pen, _geometry[i]);
+            DrawOutline(dc, brush, i, thickness);
         }
+    }
+
+    /// <summary>테두리 하나. 겹이 얇으면 선도 함께 얇아져 조각을 덮지 않는다.</summary>
+    private void DrawOutline(DrawingContext dc, Brush brush, int index, double thickness)
+    {
+        double width = OutlineWidth(index, thickness);
+        var pen = new Pen(brush, width);
+        pen.Freeze();
+        dc.DrawGeometry(null, pen, OutlineAt(index, width));
+    }
+
+    /// <summary>
+    /// 이 조각에 쓸 선 두께. 바깥 겹은 두께가 8px 아래로 내려가는데(<see cref="RingScales"/>),
+    /// 거기에 2.2px 선을 그대로 그리면 <b>선이 조각을 덮는다</b>.
+    ///
+    /// <para>처음엔 겹 두께의 3분의 1(최소 0.9px)로 잡았는데 너무 얌전했다 — 바깥 겹에 담으면
+    /// 표시가 났는지 안 났는지 알 수 없을 만큼 흐렸다. <b>담았다는 표시는 보여야 쓸모가 있다.</b>
+    /// 절반 가까이 쓰되 최소 1.4px 은 지킨다.</para>
+    /// </summary>
+    private double OutlineWidth(int index, double thickness)
+    {
+        var s = _layout.Segments[index];
+        double band = (RadiusAt(s.Ring + 1) - RingGap) - RadiusAt(s.Ring);
+        return Math.Clamp(band / 2.2d, Math.Min(1.4d, thickness), thickness);
+    }
+
+    /// <summary>
+    /// 테두리를 그릴 기하. 채움과 <b>같은 기하를 쓰면 안 된다</b> — WPF 의 Pen 은 선을 경로 위에
+    /// 가운데 맞춤으로 그려서, 두께의 절반이 조각 <b>바깥</b>으로 삐져나간다. 그 절반이 이웃 조각과
+    /// 겹 사이 이음선을 덮으면 테두리가 호에 얹힌 것이 아니라 호 옆에 따로 떠 있는 것처럼 보인다.
+    ///
+    /// <para>그래서 반지름과 각도를 <b>두께의 절반만큼 안으로</b> 들여 그린다. 그러면 선의 바깥쪽
+    /// 가장자리가 조각의 경계와 정확히 맞는다(Treemap 이 사각형에 쓰는 것과 같은 방법이다).</para>
+    /// </summary>
+    private Geometry OutlineAt(int index, double thickness)
+    {
+        // 각도가 흐르는 동안(스캔 중)에는 그 기하를 그대로 쓴다. 어차피 매 프레임 자리가 바뀐다.
+        if (_morphGeometry != null) return _morphGeometry[index];
+
+        var s = _layout.Segments[index];
+        double half = thickness / 2d;
+
+        double r0 = RadiusAt(s.Ring);
+        double r1 = RadiusAt(s.Ring + 1) - RingGap;
+
+        double inner = r0 + half, outer = r1 - half;
+        if (outer - inner < 0.6d)
+        {
+            // 겹이 선 두께보다 얇다. 한가운데에 실선 하나로 남긴다.
+            double mid = (r0 + r1) / 2d;
+            inner = mid - 0.3d;
+            outer = mid + 0.3d;
+        }
+
+        // 한 바퀴를 통째로 차지하는 조각은 각도를 줄이면 도넛이 깨져 틈이 생긴다.
+        if (s.Sweep >= 359.9d) return BuildSegment(inner, outer, s.Start, s.Sweep);
+
+        // 같은 px 라도 반지름마다 각도가 다르다. 가장 넓게 벌어지는 바깥 반지름을 기준으로 잡는다.
+        double pad = outer > 0.5d ? half / outer * (180d / Math.PI) : 0d;
+        double start = s.Start + pad, sweep = s.Sweep - pad * 2d;
+
+        if (sweep < 0.04d)
+        {
+            // 원래도 선보다 좁은 조각. 한가운데에 최소 폭으로 세운다.
+            start = s.Mid - 0.02d;
+            sweep = 0.04d;
+        }
+
+        return BuildSegment(inner, outer, start, sweep);
     }
 
     /// <summary>가운데 원 — 현재 폴더의 총량과 이름. 눌러서 상위로 올라가는 버튼이기도 하다.</summary>
@@ -575,6 +985,7 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         _hoverCenter = center;
         Cursor = center || hit >= 0 ? Cursors.Hand : Cursors.Arrow;
         HoverChanged?.Invoke(this, SegmentAt(hit));
+        BeginGlow(hit);
         InvalidateVisual();
     }
 
@@ -584,6 +995,7 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         if (_hoverIndex < 0 && !_hoverCenter) return;
         _hoverIndex = -1;
         _hoverCenter = false;
+        BeginGlow(-1);
 
         // 키보드로 가리켜 둔 것이 있으면 그리로 돌아간다. 마우스가 창 밖으로 나갔다고
         // 키보드 사용자가 보고 있던 것까지 지우면 설명 줄이 계속 초기화된다.

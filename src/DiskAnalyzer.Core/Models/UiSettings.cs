@@ -31,6 +31,16 @@ public sealed class UiSettings
     public bool DeduplicateHardLinks { get; set; }
 
     /// <summary>
+    /// 화면 전환과 강조에 애니메이션을 쓰는가. <b>기본값은 켜짐</b>이다.
+    ///
+    /// <para><c>null</c> 은 "꺼짐"이 아니라 <b>아직 정한 적 없음</b>이다 — 첫 실행 때 한 번만
+    /// Windows 의 '애니메이션 표시' 설정을 읽어 채운다(그 설정을 꺼 둔 사람에게 움직이는 화면을
+    /// 들이밀지 않기 위해서다). 한 번 값이 들어간 뒤로는 시스템 설정이 바뀌어도 따라가지 않는다 —
+    /// 여기서 직접 끄고 켠 것이 언제나 이긴다.</para>
+    /// </summary>
+    public bool? Animations { get; set; }
+
+    /// <summary>
     /// 환경 변수 DISKANALYZER_UI_SETTINGS 가 있으면 그 경로를 쓴다 —
     /// 자동 검증 도구가 사용자의 실제 설정을 건드리지 않게 하는 통로다(quickmove.json 과 같은 규칙).
     /// </summary>

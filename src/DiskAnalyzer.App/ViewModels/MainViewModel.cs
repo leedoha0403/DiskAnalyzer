@@ -8,6 +8,7 @@ using DiskAnalyzer.Core.Services;
 using DiskAnalyzer.Core.Analysis;
 using DiskAnalyzer.Core.QuickMove;
 using DiskAnalyzer.App.ViewModels.QuickMove;
+using DiskAnalyzer.App.Controls;
 
 namespace DiskAnalyzer.App.ViewModels;
 
@@ -40,6 +41,16 @@ public sealed partial class MainViewModel : ObservableObject
         _sidebarCollapsed = _ui.SidebarCollapsed;
         _sidebarWidth = _ui.SidebarWidth > 0 ? _ui.SidebarWidth : DefaultSidebarWidth;
         _ringTint = Enum.TryParse<SunburstTint>(_ui.RingTint, out var tint) ? tint : SunburstTint.Size;
+
+        // 50. 애니메이션. 한 번도 정한 적이 없으면(첫 실행) Windows 의 '애니메이션 표시' 설정을 따른다.
+        // 그 뒤로는 여기서 정한 값이 이긴다 — 그래서 값을 그때 바로 적어 둔다.
+        _animations = _ui.Animations ?? Motion.SystemPrefersAnimation;
+        if (_ui.Animations == null)
+        {
+            _ui.Animations = _animations;
+            _ui.Save();
+        }
+        Motion.Apply(_animations);
 
         Options.SizeBasis = Enum.TryParse<SizeBasis>(_ui.SizeBasis, out var basis) ? basis : SizeBasis.Logical;
         Options.DeduplicateHardLinks = _ui.DeduplicateHardLinks;
@@ -1011,6 +1022,27 @@ public sealed partial class MainViewModel : ObservableObject
             double clamped = Math.Max(MinSidebarWidth, value);
             if (!Set(ref _sidebarWidth, clamped)) return;
             _ui.SidebarWidth = clamped;
+            _ui.Save();
+        }
+    }
+
+    private bool _animations = true;
+
+    /// <summary>
+    /// 50. 화면 전환과 강조에 애니메이션을 쓰는가. <b>기본값은 켜짐</b>이고 ui.json 에 남는다.
+    ///
+    /// <para>이 하나가 앱의 모든 연출을 쥔다 — 선버스트의 줌 · 호버 · 스캔 중 각도 보간,
+    /// 패널이 뜨고 지는 방식, 사이드바 접기, 진행률 막대까지 전부 <see cref="Motion"/> 을 지나므로
+    /// 여기를 끄면 같은 결과가 움직임 없이 즉시 나타난다(동작이 빠지는 것이 아니라 시간이 빠진다).</para>
+    /// </summary>
+    public bool AnimationsEnabled
+    {
+        get => _animations;
+        set
+        {
+            if (!Set(ref _animations, value)) return;
+            Motion.Apply(value);
+            _ui.Animations = value;
             _ui.Save();
         }
     }

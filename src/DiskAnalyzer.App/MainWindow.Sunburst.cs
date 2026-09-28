@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using DiskAnalyzer.App.ViewModels;
+using DiskAnalyzer.App.Controls;
 using DiskAnalyzer.Core.Analysis;
 using DiskAnalyzer.Core.Models;
 using DiskAnalyzer.Core.Scanning;
@@ -36,6 +37,17 @@ public partial class MainWindow
         {
             _vm.RaiseCollectorText();
             RefreshCollectorView();
+
+            // 담긴 양은 화면 맨 아래 한 줄로만 바뀐다. 눈이 거기 가 있지 않으면 바뀐 줄 모른다.
+            Motion.Bump(CollectorCount);
+        };
+
+        // 설정에서 애니메이션을 끄면 링이 반쯤 줌인된 채로 멈춰 있으면 안 된다.
+        Motion.EnabledChanged += (_, _) =>
+        {
+            if (Motion.Enabled) return;
+            Sunburst.StopMotion();
+            Treemap.StopMotion();
         };
 
         SunburstInfo.Text = SunburstHint;
