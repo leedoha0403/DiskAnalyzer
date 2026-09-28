@@ -5,6 +5,31 @@
 
     <!-- 17. 공통 스타일. 색상 값은 전부 DynamicResource 로 참조해서 테마 교체가 즉시 반영되게 한다. -->
 
+    <!-- Spoqa Han Sans Neo (SIL OFL 1.1, Fonts/ 에 내장) - AIUsageMonitor(같은 저자의 자매 앱)에서
+         그대로 가져왔다. subset 의 Regular 파일은 메타데이터가 Bold 로 표시되어 있어 Medium/Bold 와
+         나란히 두면 WPF 가 Regular 를 절대 고르지 않는다 - 그래서 Regular 와 Medium/Bold 를 서로 다른
+         패밀리로 나누고, 아래 TextBlock 스타일이 굵기에 따라 패밀리를 바꿔 준다. -->
+    <FontFamily x:Key="AppFont">./Fonts/Regular/#Spoqa Han Sans Neo, Segoe UI, Malgun Gothic</FontFamily>
+    <FontFamily x:Key="AppFontStrong">./Fonts/Weights/#Spoqa Han Sans Neo, Segoe UI, Malgun Gothic</FontFamily>
+
+    <Style TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
+        <Style.Triggers>
+            <Trigger Property="FontWeight" Value="Medium">
+                <Setter Property="FontFamily" Value="{StaticResource AppFontStrong}" />
+            </Trigger>
+            <Trigger Property="FontWeight" Value="SemiBold">
+                <Setter Property="FontFamily" Value="{StaticResource AppFontStrong}" />
+            </Trigger>
+            <Trigger Property="FontWeight" Value="Bold">
+                <Setter Property="FontFamily" Value="{StaticResource AppFontStrong}" />
+            </Trigger>
+            <Trigger Property="FontWeight" Value="ExtraBold">
+                <Setter Property="FontFamily" Value="{StaticResource AppFontStrong}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
     <sys:Double x:Key="RowHeight">26</sys:Double>
 
     <Style x:Key="Card" TargetType="Border">
@@ -13,26 +38,32 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="8" />
         <Setter Property="Padding" Value="14" />
+        <!-- 살짝 떠 있는 느낌 - 어두운 테마는 그림자가 거의 안 보여도 해가 없으니 테마별로 가리지 않는다. -->
+        <Setter Property="Effect">
+            <Setter.Value>
+                <DropShadowEffect Color="#243039" BlurRadius="24" ShadowDepth="6" Opacity="0.08" Direction="270" />
+            </Setter.Value>
+        </Setter>
     </Style>
 
-    <Style x:Key="H1" TargetType="TextBlock">
+    <Style x:Key="H1" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="FontSize" Value="19" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
     </Style>
 
-    <Style x:Key="H2" TargetType="TextBlock">
+    <Style x:Key="H2" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="FontSize" Value="14" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
     </Style>
 
-    <Style x:Key="Caption" TargetType="TextBlock">
+    <Style x:Key="Caption" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="FontSize" Value="11.5" />
         <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
     </Style>
 
-    <Style x:Key="Numeric" TargetType="TextBlock">
+    <Style x:Key="Numeric" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="FontFamily" Value="Consolas, Cascadia Mono, Malgun Gothic" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
     </Style>
@@ -61,6 +92,7 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.45" />
@@ -121,6 +153,7 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
@@ -133,10 +166,54 @@
         </Setter>
     </Style>
 
+    <!-- 동그란 사각 박스 + 체크 표시. 시스템 기본 체크박스 대신 카드 · 버튼과 같은 둥근 모서리 언어를 쓴다. -->
     <Style TargetType="CheckBox">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="Margin" Value="0,4" />
         <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <StackPanel Orientation="Horizontal" Background="Transparent">
+                        <Border x:Name="Box" Width="16" Height="16" CornerRadius="4" BorderThickness="1.5"
+                                BorderBrush="{DynamicResource BorderBrushStrong}" Background="{DynamicResource SurfaceBrush}"
+                                VerticalAlignment="Center">
+                            <Grid>
+                                <Path x:Name="Mark" Data="M 3 8 L 6.6 11.5 L 13 4" Stroke="White" StrokeThickness="2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Visibility="Collapsed" />
+                                <!-- 3 상태(그룹 부분 선택)의 가운데 줄. IsThreeState 그룹 체크박스에서만 쓴다. -->
+                                <Rectangle x:Name="Dash" Width="8" Height="2" RadiusX="1" RadiusY="1" Fill="White"
+                                           Visibility="Collapsed" />
+                            </Grid>
+                        </Border>
+                        <ContentPresenter x:Name="Label" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Content" Value="{x:Null}">
+                            <Setter TargetName="Label" Property="Margin" Value="0" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Box" Property="Background" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Mark" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="{x:Null}">
+                            <Setter TargetName="Box" Property="Background" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Dash" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ===== TextBox ===== -->
@@ -147,7 +224,10 @@
         <Setter Property="CaretBrush" Value="{DynamicResource TextBrush}" />
         <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Padding" Value="8,5" />
+        <!-- 세로 여백은 8,5 였는데 Spoqa Han Sans Neo 의 줄 높이가 Segoe UI 보다 커서, 크기가
+             고정된(예: Height=30) 툴바 상자 안에서 글자 아래쪽이 잘렸다("TEST" 의 E·S 밑동이 잘림).
+             안쪽 여백을 줄여 글자가 들어찰 자리를 늘린다. -->
+        <Setter Property="Padding" Value="8,2" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Template">
             <Setter.Value>
@@ -172,6 +252,7 @@
         <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
             </Trigger>
         </ControlTemplate.Triggers>
     </ControlTemplate>

@@ -7,7 +7,7 @@
         Title="Disk Analyzer" Height="880" Width="1440" MinHeight="600" MinWidth="1080"
         Background="{DynamicResource WindowBackground}"
         Foreground="{DynamicResource TextBrush}"
-        FontFamily="Segoe UI, Malgun Gothic" FontSize="13"
+        FontFamily="./Fonts/Regular/#Spoqa Han Sans Neo, Segoe UI, Malgun Gothic" FontSize="13"
         TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True"
         AllowDrop="True" DragOver="OnWindowDragOver" Drop="OnWindowDrop">

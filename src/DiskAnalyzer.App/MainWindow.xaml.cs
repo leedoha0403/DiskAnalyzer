@@ -42,9 +42,17 @@ public partial class MainWindow : Window
                 "Light" => App.AppTheme.Light,
                 "시스템" => App.AppTheme.System,
                 "Daisy" => App.AppTheme.Daisy,
+                "Mint" => App.AppTheme.Mint,
                 _ => App.AppTheme.Dark,
             });
             ApplyDarkTitleBar();
+
+            // SunburstPalette.LightCanvas 가 방금 바뀌었다 - 캐시된 점 색과 지금 그려진 링을 새 캔버스
+            // 밝기에 맞춰 다시 계산한다. 안 하면 테마를 바꿔도 File · Free 색이 이전 밝기로 남는다.
+            MainViewModel.ClearDotCache();
+            UpdateSunburst();
+            // Treemap 은 그릴 때마다 Palette.Get() 을 live 로 부르므로 다시 칠하기만 하면 된다.
+            Treemap.InvalidateVisual();
         };
 
         _vm.ViewRefreshed += (_, _) =>
@@ -208,7 +216,7 @@ public partial class MainWindow : Window
         try
         {
             var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-            int useDark = App.CurrentTheme == App.AppTheme.Light ? 0 : 1;
+            int useDark = App.CurrentTheme is App.AppTheme.Light or App.AppTheme.Mint ? 0 : 1;
             DwmSetWindowAttribute(handle, 20, ref useDark, sizeof(int));
         }
         catch { /* 구버전 Windows 에서는 무시 */ }

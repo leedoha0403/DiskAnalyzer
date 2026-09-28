@@ -50,6 +50,16 @@ public enum SunburstTint
 /// </summary>
 public static class SunburstPalette
 {
+    /// <summary>
+    /// 지금 캔버스가 밝은 배경인가. App 쪽에서 테마를 바꿀 때 갱신한다.
+    ///
+    /// <para>File · Free 처럼 "실체가 아니라 뒤로 물러나 보여야 하는" 색은 DaisyDisk 의 짙은 남색
+    /// 캔버스를 기준으로 어둡게 잡았다 - 흰 배경(Mint · Light)에서는 그 어두운 청회색이 반대로
+    /// 튀어 보인다("갑자기 진한 회색이 있다"). 캔버스가 밝으면 같은 색조를 옅게 뒤집어 똑같이
+    /// 물러나 보이게 한다.</para>
+    /// </summary>
+    public static bool LightCanvas { get; set; }
+
     /// <summary>12시 방향(0°)에서 시계 방향으로 잰 각도에 대응하는 색조. 한 바퀴에 0° → 270° 를 훑는다.</summary>
     public static double HueAt(double angleDegrees)
     {
@@ -108,11 +118,29 @@ public static class SunburstPalette
     public static SunburstColor Fill(SunburstKind kind, double midAngle)
     {
         if (kind == SunburstKind.Hidden) return FromHsl(28d, 0.85, 0.66, 255);
-        if (kind == SunburstKind.Free) return FromHsl(222d, 0.20, 0.45, 255);
-        if (kind == SunburstKind.File) return FromHsl(FileHue, 0.14, 0.45, 255);
+        if (kind == SunburstKind.Free) return LightCanvas ? FromHsl(222d, 0.12, 0.87, 255) : FromHsl(222d, 0.20, 0.45, 255);
+
+        if (kind == SunburstKind.File)
+        {
+            // 고정된 청회색은 무지개 사이에서 홀로 이질적인 "검은 얼룩"처럼 보였다(흰 배경일수록
+            // 두드러졌다). 흰 배경에서는 파일도 부모와 같은 색조 계열을 따르되 채도를 크게 죽이고
+            // 아주 밝게 둔다 - 가문은 같지만 옅어서 물러나 보인다. 어두운 캔버스는 원래 값을 유지한다.
+            if (LightCanvas)
+            {
+                double fileHue = HueAt(midAngle);
+                var (fs, _) = ToneAt(fileHue);
+                return FromHsl(fileHue, fs * 0.30d, 0.90d, 255);
+            }
+            return FromHsl(FileHue, 0.14, 0.45, 255);
+        }
 
         double hue = HueAt(midAngle);
         var (s, l) = ToneAt(hue);
+
+        // DaisyDisk 의 짙은 남색 캔버스 위에서 잰 채도 · 밝기다 - 흰 배경은 동시대비 때문에 같은 색이
+        // 오히려 더 탁하게 보인다(채도를 죽이면 칙칙해지기만 했다). 채도는 그대로 두고 밝기만 올려
+        // 흰 종이 위에서도 산뜻하게 뜨도록 한다. 색조 순서 · 상속 구조는 그대로다.
+        if (LightCanvas) l = Math.Min(0.86d, l + 0.07d);
 
         // 반투명 = "이건 실체가 아니라 묶음이다". 채도를 낮춰 색 있는 꽃잎과 더 확실히 갈라 둔다.
         return kind == SunburstKind.Smaller
@@ -126,7 +154,7 @@ public static class SunburstPalette
     /// </summary>
     public static SunburstColor CleanupFill(int score, bool isCandidate)
     {
-        if (!isCandidate) return FromHsl(220d, 0.08, 0.34, 255);
+        if (!isCandidate) return LightCanvas ? FromHsl(220d, 0.06, 0.88, 255) : FromHsl(220d, 0.08, 0.34, 255);
 
         // 30점(참고) 초록 → 100점(우선 정리) 빨강. 점수 구간과 같은 축이다.
         double t = Math.Clamp((score - 30) / 70d, 0d, 1d);
@@ -140,8 +168,8 @@ public static class SunburstPalette
     /// <param name="delta">현재 − 이전(바이트). 이전 기록이 없으면 <paramref name="known"/> 가 false 다.</param>
     public static SunburstColor DeltaFill(long delta, long previous, bool known)
     {
-        if (!known) return FromHsl(280d, 0.30, 0.52, 255);          // 이전 스캔에 없던 것 = 새로 생김
-        if (delta == 0) return FromHsl(220d, 0.08, 0.36, 255);      // 그대로
+        if (!known) return LightCanvas ? FromHsl(280d, 0.22, 0.80, 255) : FromHsl(280d, 0.30, 0.52, 255);          // 이전 스캔에 없던 것 = 새로 생김
+        if (delta == 0) return LightCanvas ? FromHsl(220d, 0.06, 0.88, 255) : FromHsl(220d, 0.08, 0.36, 255);      // 그대로
 
         double baseline = Math.Max(previous, 64L * 1024 * 1024);    // 작은 파일의 배율 폭주를 막는다
         double t = Math.Clamp(Math.Abs(delta) / baseline, 0d, 1d);

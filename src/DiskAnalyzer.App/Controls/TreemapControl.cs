@@ -271,8 +271,7 @@ public sealed class TreemapControl : FrameworkElement
     /// </summary>
     private void BuildLabels()
     {
-        _typeface ??= new Typeface(new FontFamily("Segoe UI, Malgun Gothic"),
-            FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        _typeface ??= new Typeface(AppFont.Family, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
         double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
 
         foreach (var item in _items)
@@ -462,6 +461,10 @@ public sealed class TreemapControl : FrameworkElement
 
         // 라벨은 Rebuild 때 미리 만들어 둔 것을 그대로 그린다 - 줌 애니메이션 중 매 프레임
         // FormattedText 를 새로 만들면(텍스트 렌더링이 treemap 비용의 대부분이다) 버벅인다.
+        //
+        // 흰 받침 · 글자 테두리(halo) 둘 다 글자에 손을 대는 방식이라 부자연스러웠다 - 사각형
+        // 색(Palette) 자체가 깊이마다 뚜렷이 갈리도록 고쳐서, 글자는 원래대로 한 번만 그려도
+        // 항상 충분한 대비가 나오게 한다.
         foreach (var item in _items)
         {
             if (item.CachedLabel == null) continue;
@@ -494,8 +497,7 @@ public sealed class TreemapControl : FrameworkElement
 
     private void DrawCentered(DrawingContext dc, string message)
     {
-        _typeface ??= new Typeface(new FontFamily("Segoe UI, Malgun Gothic"),
-            FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        _typeface ??= new Typeface(AppFont.Family, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
         double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         var text = new FormattedText(message, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
             _typeface, 13, LabelBrush, dpi);
@@ -503,8 +505,9 @@ public sealed class TreemapControl : FrameworkElement
     }
 
     /// <summary>
-    /// 색은 카테고리 7종으로 제한하고(17. 색상 남용 금지), 깊이에 따라 밝기만 단계적으로 올린다.
-    /// 같은 색을 그대로 쓰면 중첩된 폴더 경계가 보이지 않아 트리 구조가 읽히지 않는다.
+    /// 색은 카테고리 7종으로 제한하고(17. 색상 남용 금지), 폴더는 깊이에 따라 밝기를 단계적으로 낮춘다
+    /// (중첩 경계가 드러나야 트리 구조가 읽힌다). 파일(리프)은 깊이와 무관하게 카테고리 색 그대로 둔다 -
+    /// 깊이만큼 계속 어두워지면 "같은 분홍인데 왜 폴더마다 톤이 다르지"처럼 색이 겹쳐 보인다는 인상을 줬다.
     /// 브러시는 (카테고리 × 깊이) 조합으로 미리 만들어 Freeze 해 두므로 렌더링 중 할당이 없다.
     /// </summary>
     private static Brush BrushFor(TreemapItem item)
@@ -518,14 +521,15 @@ public sealed class TreemapControl : FrameworkElement
             var f when (f & (CategoryFlags.Media | CategoryFlags.Archive)) != 0 => 6,
             _ => item.IsDirectory ? 0 : 1,
         };
-        return Palette.Get(slot, item.Depth);
+        return Palette.Get(slot, item.IsDirectory ? item.Depth : 0);
     }
 
     private static class Palette
     {
         private const int Depths = MaxDepth + 2;
 
-        private static readonly Color[] Base =
+        // 어두운 캔버스(Dark · Daisy) 용 - 짙게 시작해 깊이마다 밝아진다.
+        private static readonly Color[] DarkBase =
         {
             Color.FromRgb(0x36, 0x47, 0x5A),   // 0 폴더
             Color.FromRgb(0x44, 0x63, 0x7C),   // 1 파일
@@ -536,28 +540,56 @@ public sealed class TreemapControl : FrameworkElement
             Color.FromRgb(0x63, 0x43, 0x4E),   // 6 미디어/압축
         };
 
-        private static readonly Brush[] Cache = Build();
+        // 흰 캔버스(Mint · Light) 용 - 짙은 남색 계열 그대로 밝기만 올리면 칙칙해서(옛날 느낌),
+        // 선버스트와 같은 파스텔 계열로 새로 잡았다. 카테고리별 색조(파랑 · 갈색 · 보라 · 초록 · 장미)는 유지하되
+        // 처음부터 좀 더 또렷하게 잡았다 - 너무 옅으면 글자와 구분도 안 되고 깊이 단계끼리도 서로 안 갈린다.
+        private static readonly Color[] LightBase =
+        {
+            Color.FromRgb(0x7F, 0xB0, 0xE0),   // 0 폴더
+            Color.FromRgb(0xAC, 0xD0, 0xEC),   // 1 파일
+            Color.FromRgb(0xD9, 0x9A, 0x63),   // 2 로그
+            Color.FromRgb(0xE0, 0xB5, 0x63),   // 3 빌드
+            Color.FromRgb(0xAD, 0x8F, 0xD9),   // 4 캐시
+            Color.FromRgb(0x74, 0xC7, 0x9E),   // 5 패키지
+            Color.FromRgb(0xDB, 0x8C, 0xA0),   // 6 미디어/압축
+        };
 
+        private static Brush[]? _cache;
+        private static bool _cacheIsLight;
+
+        /// <summary>테마를 바꾸면 다음 <see cref="Get"/> 호출에서 새 캔버스에 맞는 팔레트로 다시 만든다.</summary>
         public static Brush Get(int slot, int depth)
         {
-            slot = Math.Clamp(slot, 0, Base.Length - 1);
+            bool light = SunburstPalette.LightCanvas;
+            if (_cache == null || _cacheIsLight != light)
+            {
+                _cache = Build(light);
+                _cacheIsLight = light;
+            }
+
+            slot = Math.Clamp(slot, 0, DarkBase.Length - 1);
             depth = Math.Clamp(depth, 0, Depths - 1);
-            return Cache[slot * Depths + depth];
+            return _cache[slot * Depths + depth];
         }
 
-        private static Brush[] Build()
+        private static Brush[] Build(bool light)
         {
-            var brushes = new Brush[Base.Length * Depths];
-            for (int s = 0; s < Base.Length; s++)
+            var baseColors = light ? LightBase : DarkBase;
+            var brushes = new Brush[baseColors.Length * Depths];
+            for (int s = 0; s < baseColors.Length; s++)
             {
                 for (int d = 0; d < Depths; d++)
                 {
-                    double k = 1d + d * 0.16d;
-                    var c = Base[s];
+                    var c = baseColors[s];
+                    // 어두운 캔버스는 깊이마다 밝아지고, 밝은 캔버스는 반대로 깊이마다 짙어진다 -
+                    // 처음엔 0.055 씩만 줄였는데 depth 0~3 이 거의 같은 색으로 보여("Users · leedo ·
+                    // Videos · ozmo" 가 전부 한 덩어리) 글자까지 묻혔다. 단계를 두 배 넘게 키워
+                    // 옆 깊이와 확실히 갈리게 한다.
+                    double k = light ? 1d - d * 0.12d : 1d + d * 0.16d;
                     var brush = new SolidColorBrush(Color.FromRgb(
-                        (byte)Math.Min(255, c.R * k),
-                        (byte)Math.Min(255, c.G * k),
-                        (byte)Math.Min(255, c.B * k)));
+                        (byte)Math.Clamp(c.R * k, 0d, 255d),
+                        (byte)Math.Clamp(c.G * k, 0d, 255d),
+                        (byte)Math.Clamp(c.B * k, 0d, 255d)));
                     brush.Freeze();
                     brushes[s * Depths + d] = brush;
                 }

@@ -265,6 +265,13 @@ public sealed partial class MainViewModel
 
     private static readonly Dictionary<int, Brush> DotCache = [];
 
+    /// <summary>
+    /// 테마를 바꾸면 캐시된 점 브러시가 이전 캔버스(밝기) 기준 색으로 남는다 - 여기서 비운다.
+    /// (MainWindow 의 테마 전환 핸들러가 <see cref="Core.Models.SunburstPalette.LightCanvas"/> 를
+    /// 바꾼 직후 호출한다.)
+    /// </summary>
+    public static void ClearDotCache() => DotCache.Clear();
+
     /// <summary>점 브러시는 (종류 × 각도 3° 단위)로 캐시한다. 목록을 다시 그릴 때마다 할당하지 않는다.</summary>
     private static Brush DotFor(SunburstKind kind, double midAngle)
     {

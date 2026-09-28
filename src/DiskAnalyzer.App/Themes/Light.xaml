@@ -25,6 +25,7 @@
     <SolidColorBrush x:Key="FileIconBrush" Color="#FF4E7FA6" />
 
     <SolidColorBrush x:Key="TreemapStrokeBrush" Color="#FFFFFFFF" />
-    <SolidColorBrush x:Key="TreemapLabelBrush" Color="#FF101010" />
+    <!-- Treemap 상자 색을 짙게 바꾸면서 흰 글자가 어울리게 됐다(Dark 테마와 같은 값). -->
+    <SolidColorBrush x:Key="TreemapLabelBrush" Color="#FFFFFFFF" />
 
 </ResourceDictionary>

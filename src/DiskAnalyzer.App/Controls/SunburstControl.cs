@@ -706,8 +706,7 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         // 히트 테스트를 받으려면 배경이 칠해져 있어야 한다.
         dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
 
-        _typeface ??= new Typeface(new FontFamily("Segoe UI, Malgun Gothic"),
-            FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        _typeface ??= new Typeface(AppFont.Family, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
 
         if (_geometry.Length == 0)
         {

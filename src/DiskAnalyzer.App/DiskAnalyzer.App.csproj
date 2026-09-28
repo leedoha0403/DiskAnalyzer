@@ -16,12 +16,19 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>DiskAnalyzer</AssemblyName>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Spoqa Han Sans Neo (SIL OFL 1.1) - AIUsageMonitor(같은 저자의 자매 앱)에서 그대로 가져왔다.
+       단일 파일 배포에도 들어가도록 어셈블리 리소스로 묻는다(느슨한 파일로 복사하지 않는다). -->
+  <ItemGroup>
+    <Resource Include="Fonts\**\*.ttf" />
+    <None Include="Fonts\OFL-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
