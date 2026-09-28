@@ -14,9 +14,9 @@ public partial class App : Application
     public static AppTheme CurrentTheme => _theme;
 
     /// <summary>
-    /// 프로세스 정리기에서 "관리자 권한으로 재시도"를 누르면 이 exe 를 --kill-pid=&lt;pid&gt; 로
+    /// 프로세스 정리기에서 "관리자 권한으로 재시도"를 누르면 이 exe 를 --kill-pid=&lt;pid[,pid...]&gt; 로
     /// UAC 상승 재실행한다(ProcessCleanerService.TryKillElevated). 그 인스턴스는 창을 띄우지 않고
-    /// 그 프로세스 하나만 죽인 뒤 종료 코드로 결과를 돌려주고 바로 빠진다.
+    /// 그 프로세스(들)만 죽인 뒤 실패한 개수를 종료 코드로 돌려주고 바로 빠진다.
     /// </summary>
     private const string ElevatedKillArgPrefix = "--kill-pid=";
 
@@ -43,12 +43,13 @@ public partial class App : Application
         var arg = args.FirstOrDefault(a => a.StartsWith(ElevatedKillArgPrefix, StringComparison.Ordinal));
         if (arg == null) return false;
 
-        int exitCode = int.TryParse(arg.AsSpan(ElevatedKillArgPrefix.Length), out int pid)
-            && ProcessCleanerService.TryKill(pid) == KillOutcome.Success
-            ? 0
-            : 1;
+        var pids = arg.AsSpan(ElevatedKillArgPrefix.Length).ToString()
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => int.TryParse(s, out _))
+            .Select(int.Parse);
 
-        Environment.Exit(exitCode);
+        int failures = pids.Count(pid => ProcessCleanerService.TryKill(pid) != KillOutcome.Success);
+        Environment.Exit(Math.Clamp(failures, 0, 255));
         return true;
     }
 
