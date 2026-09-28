@@ -1697,6 +1697,9 @@
                         <Button Content="단축키 설정..." Click="OnOpenShortcutSettings"
                                 AutomationProperties.AutomationId="OpenShortcutSettings"
                                 ToolTip="기능별 단축키를 확인하고 바꿉니다" />
+                        <Button Content="프로세스 정리기..." Click="OnOpenProcessCleaner" Margin="0,6,0,0"
+                                AutomationProperties.AutomationId="OpenProcessCleaner"
+                                ToolTip="게임 등이 죽다 만 채로 남은 응답 없는 프로세스를 찾아 종료합니다" />
                     </StackPanel>
 
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"

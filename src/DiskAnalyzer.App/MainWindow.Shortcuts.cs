@@ -37,6 +37,12 @@ public partial class MainWindow
         window.ShowDialog();
     }
 
+    private void OnOpenProcessCleaner(object sender, RoutedEventArgs e)
+    {
+        var window = new ProcessCleanerWindow { Owner = this };
+        window.ShowDialog();
+    }
+
     private bool ExecuteShortcut(string commandId)
     {
         int tabIndex = Array.IndexOf(TabCommands, commandId);

@@ -37,14 +37,7 @@ public partial class MainWindow : Window
 
         _vm.ThemeChangeRequested += (_, theme) =>
         {
-            App.ApplyTheme(theme switch
-            {
-                "Light" => App.AppTheme.Light,
-                "시스템" => App.AppTheme.System,
-                "Daisy" => App.AppTheme.Daisy,
-                "Mint" => App.AppTheme.Mint,
-                _ => App.AppTheme.Dark,
-            });
+            App.ApplyTheme(App.ParseTheme(theme));
             ApplyDarkTitleBar();
 
             // SunburstPalette.LightCanvas 가 방금 바뀌었다 - 캐시된 점 색과 지금 그려진 링을 새 캔버스

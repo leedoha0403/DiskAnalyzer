@@ -41,6 +41,7 @@ public sealed partial class MainViewModel : ObservableObject
         _sidebarCollapsed = _ui.SidebarCollapsed;
         _sidebarWidth = _ui.SidebarWidth > 0 ? _ui.SidebarWidth : DefaultSidebarWidth;
         _ringTint = Enum.TryParse<SunburstTint>(_ui.RingTint, out var tint) ? tint : SunburstTint.Size;
+        _selectedTheme = _ui.Theme;
 
         // 50. 애니메이션. 한 번도 정한 적이 없으면(첫 실행) Windows 의 '애니메이션 표시' 설정을 따른다.
         // 그 뒤로는 여기서 정한 값이 이긴다 — 그래서 값을 그때 바로 적어 둔다.
@@ -545,13 +546,15 @@ public sealed partial class MainViewModel : ObservableObject
 
     public IReadOnlyList<string> ThemeOptions { get; } = new[] { "Mint", "Dark", "Light", "시스템", "Daisy" };
 
-    private string _selectedTheme = "시스템";
+    private string _selectedTheme;
     public string SelectedTheme
     {
         get => _selectedTheme;
         set
         {
             if (!Set(ref _selectedTheme, value)) return;
+            _ui.Theme = value;
+            _ui.Save();
             ThemeChangeRequested?.Invoke(this, value);
         }
     }

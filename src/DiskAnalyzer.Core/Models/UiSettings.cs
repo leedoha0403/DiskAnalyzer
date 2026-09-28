@@ -24,6 +24,9 @@ public sealed class UiSettings
     /// <summary>선버스트 링의 색 기준(<c>SunburstTint</c>). 이름으로 저장해 값이 밀려도 안전하다.</summary>
     public string RingTint { get; set; } = nameof(SunburstTint.Size);
 
+    /// <summary>고른 UI 테마 이름(Mint · Dark · Light · 시스템 · Daisy). 안 고르면 시스템을 따라간다.</summary>
+    public string Theme { get; set; } = "시스템";
+
     /// <summary>크기를 논리로 볼지 물리(디스크 할당)로 볼지. 이름으로 저장한다.</summary>
     public string SizeBasis { get; set; } = nameof(Models.SizeBasis.Logical);
 

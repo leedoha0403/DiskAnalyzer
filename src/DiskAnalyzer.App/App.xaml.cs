@@ -1,4 +1,6 @@
 using System.Windows;
+using DiskAnalyzer.Core.Models;
+using DiskAnalyzer.Core.Services;
 using Microsoft.Win32;
 
 namespace DiskAnalyzer.App;
@@ -11,10 +13,43 @@ public partial class App : Application
 
     public static AppTheme CurrentTheme => _theme;
 
+    /// <summary>
+    /// 프로세스 정리기에서 "관리자 권한으로 재시도"를 누르면 이 exe 를 --kill-pid=&lt;pid&gt; 로
+    /// UAC 상승 재실행한다(ProcessCleanerService.TryKillElevated). 그 인스턴스는 창을 띄우지 않고
+    /// 그 프로세스 하나만 죽인 뒤 종료 코드로 결과를 돌려주고 바로 빠진다.
+    /// </summary>
+    private const string ElevatedKillArgPrefix = "--kill-pid=";
+
     protected override void OnStartup(StartupEventArgs e)
     {
+        if (TryRunElevatedKillAndExit(e.Args)) return;
+
         base.OnStartup(e);
-        ApplyTheme(AppTheme.System);
+        ApplyTheme(ParseTheme(UiSettings.Load().Theme));
+    }
+
+    /// <summary>설정 화면의 테마 이름(문자열로 저장)을 <see cref="AppTheme"/> 로 바꾼다.</summary>
+    public static AppTheme ParseTheme(string name) => name switch
+    {
+        "Light" => AppTheme.Light,
+        "Dark" => AppTheme.Dark,
+        "Daisy" => AppTheme.Daisy,
+        "Mint" => AppTheme.Mint,
+        _ => AppTheme.System,
+    };
+
+    private static bool TryRunElevatedKillAndExit(string[] args)
+    {
+        var arg = args.FirstOrDefault(a => a.StartsWith(ElevatedKillArgPrefix, StringComparison.Ordinal));
+        if (arg == null) return false;
+
+        int exitCode = int.TryParse(arg.AsSpan(ElevatedKillArgPrefix.Length), out int pid)
+            && ProcessCleanerService.TryKill(pid) == KillOutcome.Success
+            ? 0
+            : 1;
+
+        Environment.Exit(exitCode);
+        return true;
     }
 
     /// <summary>
