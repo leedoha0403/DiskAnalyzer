@@ -27,6 +27,14 @@ public sealed class TreemapControl : FrameworkElement
 
         /// <summary>이름을 쓸 헤더 띠를 확보했는지.</summary>
         public double HeaderHeight { get; set; }
+
+        /// <summary>
+        /// 라벨을 미리 그려 둔 것. <see cref="FormattedText"/> 생성(글자 배치)이 treemap 렌더 비용의
+        /// 대부분이라, 폴더를 드나드는 줌 애니메이션 중 매 프레임 새로 만들면 그만큼 버벅인다 —
+        /// Bounds 는 바뀌지 않고 화면 전체에 걸린 변환(<see cref="PushTransition"/>)만 움직이므로,
+        /// <see cref="Rebuild"/> 가 항목을 새로 채울 때 한 번만 만들어 두고 렌더링에서는 재사용한다.
+        /// </summary>
+        public FormattedText? CachedLabel { get; set; }
     }
 
     private const int MaxItems = 4000;
@@ -40,6 +48,8 @@ public sealed class TreemapControl : FrameworkElement
     private Size _lastLayoutSize;
     private TreemapItem? _hovered;
     private Typeface? _typeface;
+    private Pen? _cachedStrokePen;
+    private Brush? _cachedStrokeBrush;
 
     public event EventHandler<TreemapItem?>? HoverChanged;
     public event EventHandler<TreemapItem>? ItemActivated;
@@ -62,7 +72,14 @@ public sealed class TreemapControl : FrameworkElement
 
     public static readonly DependencyProperty LabelBrushProperty = DependencyProperty.Register(
         nameof(LabelBrush), typeof(Brush), typeof(TreemapControl),
-        new FrameworkPropertyMetadata(Brushes.White, FrameworkPropertyMetadataOptions.AffectsRender));
+        new FrameworkPropertyMetadata(Brushes.White, FrameworkPropertyMetadataOptions.AffectsRender, OnLabelBrushChanged));
+
+    // 라벨은 만들 때 색을 굳혀 캐시해 둔다(버벅임 방지) - 테마가 바뀌어 브러시가 달라지면
+    // 다시 만들어야 낡은 색으로 남지 않는다.
+    private static void OnLabelBrushChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TreemapControl t) t.BuildLabels();
+    }
 
     public static readonly DependencyProperty SelectionBrushProperty = DependencyProperty.Register(
         nameof(SelectionBrush), typeof(Brush), typeof(TreemapControl),
@@ -178,7 +195,7 @@ public sealed class TreemapControl : FrameworkElement
         // 사각형에서 화면 전체까지 통째로 펴면 배율이 수십 배가 되어 화면이 터져 나오는 것처럼 보인다.
         // 출발점을 목적지 쪽으로 미리 당겨 두면 "어디서 왔는지"는 남고 출렁임만 빠진다.
         _zoomFrom = Between(from, new Rect(0, 0, ActualWidth, ActualHeight), ZoomRestraint);
-        Motion.From(this, TransitionProperty, 0d, 1d, Motion.Normal, Motion.Ease);
+        Motion.From(this, TransitionProperty, 0d, 1d, Motion.Glide, Motion.Land);
     }
 
     /// <summary>
@@ -243,7 +260,50 @@ public sealed class TreemapControl : FrameworkElement
         if (_store != null) BuildLevel(_dirId, area, 0);
         else if (_flatRows != null) BuildFlat(_flatRows, area);
 
+        BuildLabels();
+        SyncHover();
         InvalidateVisual();
+    }
+
+    /// <summary>
+    /// 라벨을 그릴 사각형마다 <see cref="FormattedText"/> 를 미리 만들어 둔다. 레이아웃이 바뀔 때(=<see cref="Rebuild"/>)
+    /// 한 번만 하는 일이고, 줌 애니메이션 동안의 <see cref="OnRender"/> 는 이 결과를 그대로 그리기만 한다.
+    /// </summary>
+    private void BuildLabels()
+    {
+        _typeface ??= new Typeface(new FontFamily("Segoe UI, Malgun Gothic"),
+            FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+
+        foreach (var item in _items)
+        {
+            if (item.Expanded && item.HeaderHeight <= 0) continue;
+            if (item.Bounds.Width < 54 || item.Bounds.Height < 16) continue;
+
+            item.CachedLabel = new FormattedText(item.Name, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+                _typeface, 11.5, LabelBrush, dpi)
+            {
+                MaxTextWidth = Math.Max(1, item.Bounds.Width - 8),
+                Trimming = TextTrimming.CharacterEllipsis,
+                MaxLineCount = 1,
+            };
+        }
+    }
+
+    /// <summary>
+    /// 다시 그린 뒤 가리킨 사각형을 다시 잰다. <see cref="_hovered"/> 는 옛 <see cref="_items"/> 의
+    /// 객체라 <c>Rebuild</c> 가 목록을 새로 채우면 낡은 자리를 계속 가리킨다 — 더블 클릭이나
+    /// Backspace 로 이동하면 마우스는 그대로인데 화면이 바뀌어서, 흰 테두리가 방금까지 커서가
+    /// 있던 <b>엉뚱한 자리</b>에 남는다. 마우스가 실제로 움직이기를 기다리지 않고, 지금 위치로
+    /// 새 배치를 다시 맞혀 본다.
+    /// </summary>
+    private void SyncHover()
+    {
+        var hit = IsMouseOver ? HitTest(Mouse.GetPosition(this)) : null;
+        if (ReferenceEquals(hit, _hovered)) return;
+
+        _hovered = hit;
+        HoverChanged?.Invoke(this, hit);
     }
 
     private void BuildFlat(IReadOnlyList<EntryRow> rows, Rect area)
@@ -386,12 +446,13 @@ public sealed class TreemapControl : FrameworkElement
 
         int pushed = PushTransition(dc);
 
-        var pen = new Pen(StrokeBrush, 1d);
-        pen.Freeze();
-        _typeface ??= new Typeface(new FontFamily("Segoe UI, Malgun Gothic"),
-            FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
-
-        double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        if (_cachedStrokePen == null || !ReferenceEquals(_cachedStrokeBrush, StrokeBrush))
+        {
+            _cachedStrokeBrush = StrokeBrush;
+            _cachedStrokePen = new Pen(StrokeBrush, 1d);
+            _cachedStrokePen.Freeze();
+        }
+        var pen = _cachedStrokePen;
 
         foreach (var item in _items)
         {
@@ -399,23 +460,12 @@ public sealed class TreemapControl : FrameworkElement
             dc.DrawRectangle(brush, item.Bounds.Width > 3 && item.Bounds.Height > 3 ? pen : null, item.Bounds);
         }
 
-        // 라벨은 충분히 큰 사각형에만 그린다. (텍스트 렌더링이 treemap 비용의 대부분이다)
+        // 라벨은 Rebuild 때 미리 만들어 둔 것을 그대로 그린다 - 줌 애니메이션 중 매 프레임
+        // FormattedText 를 새로 만들면(텍스트 렌더링이 treemap 비용의 대부분이다) 버벅인다.
         foreach (var item in _items)
         {
-            // 하위가 그려진 폴더는 헤더 띠가 있을 때만 이름을 쓴다 - 자식 라벨과 겹치지 않게.
-            if (item.Expanded && item.HeaderHeight <= 0) continue;
-            if (item.Bounds.Width < 54 || item.Bounds.Height < 16) continue;
-
-            // MaxTextHeight 가 한 줄 높이보다 작으면 FormattedText 는 아무것도 그리지 않는다.
-            // 헤더 띠는 이미 높이를 확보해 두었으므로 높이 제한을 걸지 않고 MaxLineCount 로만 한 줄을 강제한다.
-            var text = new FormattedText(item.Name, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-                _typeface, 11.5, LabelBrush, dpi)
-            {
-                MaxTextWidth = Math.Max(1, item.Bounds.Width - 8),
-                Trimming = TextTrimming.CharacterEllipsis,
-                MaxLineCount = 1,
-            };
-            dc.DrawText(text, new Point(item.Bounds.X + 4, item.Bounds.Y + 1));
+            if (item.CachedLabel == null) continue;
+            dc.DrawText(item.CachedLabel, new Point(item.Bounds.X + 4, item.Bounds.Y + 1));
         }
 
         if (_selected.Count > 0)

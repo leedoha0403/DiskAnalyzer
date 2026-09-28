@@ -371,15 +371,13 @@ public partial class MainWindow
         if (_vm.Collector.IsEmpty)
         {
             CollectorExpand.IsChecked = false;
-            CollectorPanel.Visibility = Visibility.Collapsed;
+            Motion.SetOpen(CollectorPanel, false);
         }
         SyncCollectedToSunburst();
     }
 
     private void OnCollectorExpandChanged(object sender, RoutedEventArgs e)
-        => CollectorPanel.Visibility = CollectorExpand.IsChecked == true && !_vm.Collector.IsEmpty
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        => Motion.SetOpen(CollectorPanel, CollectorExpand.IsChecked == true && !_vm.Collector.IsEmpty);
 
     private void OnCollectorRemove(object sender, RoutedEventArgs e)
     {

@@ -79,6 +79,7 @@ public sealed partial class MainViewModel : ObservableObject
         ApplyExclusionsCommand = new RelayCommand(ApplyExclusions);
         RefreshLargeFilesCommand = new RelayCommand(
             () => _ = RefreshLargeFilesAsync(), () => !IsRefreshing && !IsScanning && _current != null);
+        InitAboutCommands();
 
         _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(150) };
         _timer.Tick += (_, _) => Tick();

@@ -16,6 +16,7 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <ctl:TreeRowWidthConverter x:Key="TreeRowWidth" />
         <ctl:DepthIndentConverter x:Key="DepthIndent" />
+        <ctl:InverseBoolConverter x:Key="InverseBool" />
 
         <!-- 15. 파일 / 폴더 우클릭 메뉴 -->
         <ContextMenu x:Key="RowMenu" x:Shared="False" Opened="OnRowMenuOpened">
@@ -128,8 +129,16 @@
         <!-- ================= 헤더 ================= -->
         <StackPanel DockPanel.Dock="Top" Margin="16,14,16,0">
 
+            <!-- 창을 최소 폭까지 줄이면 왼쪽 제목과 오른쪽 버튼이 같은 Grid 칸에서
+                 서로를 뚫고 겹쳐 보였다 - 열을 나누고, 버튼은 WrapPanel 로 둬서
+                 자리가 없으면 겹치는 대신 아랫줄로 내려가게 한다. -->
             <Grid Margin="0,0,0,12">
-                <StackPanel Orientation="Horizontal">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <!-- 저장소 사이드바 토글. 글리프 대신 도형으로 그린다 - 아이콘 글꼴이 없는 환경에서
                          네모(tofu)로 깨지지 않고, 테마 색을 그대로 따라간다. -->
                     <Button x:Name="SidebarToggle" Click="OnToggleSidebar"
@@ -148,7 +157,8 @@
                     </Button>
                     <TextBlock Text="Disk Analyzer" Style="{StaticResource H1}" VerticalAlignment="Center" />
                     <TextBlock x:Name="ElevationHint" Style="{StaticResource Caption}" Margin="12,0,0,0"
-                               VerticalAlignment="Center" Foreground="{DynamicResource WarningBrush}" />
+                               VerticalAlignment="Center" Foreground="{DynamicResource WarningBrush}"
+                               TextTrimming="CharacterEllipsis" />
                     <Button x:Name="ElevateButton" Content="관리자 권한으로 다시 실행"
                             AutomationProperties.AutomationId="ElevateButton"
                             Click="OnRestartAsAdmin" Margin="10,0,0,0" Padding="10,4" FontSize="11.5"
@@ -157,25 +167,26 @@
                             ToolTip="NTFS Fast Scan 을 쓰려면 관리자 권한이 필요합니다. UAC 승인 후 같은 경로를 다시 스캔합니다." />
                 </StackPanel>
 
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <WrapPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right"
+                           VerticalAlignment="Center" Margin="12,0,0,0">
                     <Button Content="선택 드라이브 스캔" Style="{StaticResource AccentButton}"
-                            Command="{Binding ScanSelectedCommand}" Margin="0,0,8,0"
+                            Command="{Binding ScanSelectedCommand}" Margin="0,0,8,4"
                             ToolTip="왼쪽 사이드바에서 고른 드라이브를 스캔합니다&#10;드라이브 카드를 더블 클릭해도 같습니다" />
-                    <Button Content="전체 스캔" Command="{Binding ScanAllCommand}" Margin="0,0,8,0"
+                    <Button Content="전체 스캔" Command="{Binding ScanAllCommand}" Margin="0,0,8,4"
                             ToolTip="연결된 모든 드라이브를 차례로 스캔합니다" />
-                    <Button Content="새로고침" Command="{Binding RefreshCommand}" Margin="0,0,8,0"
+                    <Button Content="새로고침" Command="{Binding RefreshCommand}" Margin="0,0,8,4"
                             km:ShortcutHint.Command="View.ForceRescan" km:ShortcutHint.Text="현재 위치를 다시 스캔합니다" />
-                    <Button Content="스캔 중지" Command="{Binding CancelCommand}" Margin="0,0,16,0"
+                    <Button Content="스캔 중지" Command="{Binding CancelCommand}" Margin="0,0,16,4"
                             ToolTip="진행 중인 스캔을 멈춥니다&#10;그때까지 읽은 결과는 남습니다" />
-                    <ToggleButton x:Name="DockToggle" Content="이동 도크" IsChecked="{Binding QuickMove.IsDockVisible}" Margin="0,0,8,0"
+                    <ToggleButton x:Name="DockToggle" Content="이동 도크" IsChecked="{Binding QuickMove.IsDockVisible}" Margin="0,0,8,4"
                                   AutomationProperties.AutomationId="DockToggle"
                                   ToolTip="화면 오른쪽에 '빠른 이동' 도크를 붙입니다. 폴더 / Treemap 을 보면서 출발지(위)·목적지(아래)를 함께 볼 수 있습니다" />
-                    <ToggleButton Content="설정" IsChecked="{Binding ShowSettings}" Margin="0,0,8,0"
+                    <ToggleButton Content="설정" IsChecked="{Binding ShowSettings}" Margin="0,0,8,4"
                                   AutomationProperties.AutomationId="ToggleSettings"
                                   ToolTip="스캔 방식 · 테마 · 제외 규칙 · 내보내기&#10;맨 아래 [단축키 설정...] 에서 모든 단축키를 바꿀 수 있습니다" />
-                    <ToggleButton Content="성능" IsChecked="{Binding ShowPerfMonitor}"
+                    <ToggleButton Content="성능" IsChecked="{Binding ShowPerfMonitor}" Margin="0,0,0,4"
                                   ToolTip="스캔 속도 · 워커 수 · 큐 길이 · 메모리를 실시간으로 봅니다" />
-                </StackPanel>
+                </WrapPanel>
             </Grid>
 
             <!-- 5. 스캔 진행 상태 -->
@@ -188,7 +199,7 @@
                             <Run Text="Scanning " /><Run Text="{Binding CurrentPath, Mode=OneWay}" />
                         </TextBlock>
                     </DockPanel>
-                    <ProgressBar ctl:Motion.Progress="{Binding ProgressValue, Mode=OneWay}"
+                    <ProgressBar x:Name="ScanProgressBar" ctl:Motion.Progress="{Binding ProgressValue, Mode=OneWay}"
                                  Maximum="100" Height="6" Margin="0,0,0,12" />
                     <UniformGrid Columns="5" Margin="0,0,0,8">
                         <StackPanel>
@@ -235,7 +246,11 @@
                                Margin="14,11,14,8" />
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                   Padding="14,0,14,4">
-                        <StackPanel>
+                        <!-- ScrollViewer.Padding 은 뷰포트(와 클리핑 경계) 자체를 안쪽으로 미는 것이라
+                             그 안에 여유가 생기지 않는다 - 맨 위 카드가 여전히 클리핑 경계에 바짝 붙어
+                             호버로 2px 떠오를 때 위쪽 테두리가 잘렸다. 대신 스크롤되는 내용(StackPanel)
+                             쪽에 위 여백을 줘서, 클리핑 경계 안쪽에 실제로 뜰 공간을 만든다. -->
+                        <StackPanel Margin="0,3,0,0">
                         <!-- 4.1 드라이브 요약 -->
                         <ItemsControl x:Name="DriveCards" ItemsSource="{Binding Drives}">
                             <ItemsControl.ItemTemplate>
@@ -319,7 +334,11 @@
                              칸(Grid)으로 나눠 두었을 때는 폭이 모자라면 마지막 칸이 그냥 잘려서
                              [검색] [지우기] 가 화면에서 사라졌다 - 줄이 늘어나는 편이 낫다. -->
                         <WrapPanel>
-                            <TabControl x:Name="Tabs" SelectionChanged="OnTabChanged" HorizontalAlignment="Left">
+                            <!-- TabIndicator 는 탭 스트립 바로 아래에 떠서 선택된 탭의 폭·위치로 미끄러진다.
+                                 TabControl 의 칸 하나를 같이 쓰므로 이 Grid 는 그 자체가 자리다. -->
+                            <Grid x:Name="TabIndicatorHost">
+                            <TabControl x:Name="Tabs" SelectionChanged="OnTabChanged" HorizontalAlignment="Left"
+                                        SizeChanged="OnTabsSizeChanged">
                                 <TabItem Header="폴더" />
                                 <TabItem Header="Treemap" />
                                 <TabItem Header="선버스트" AutomationProperties.AutomationId="SunburstTab" />
@@ -328,16 +347,28 @@
                                 <TabItem Header="정리 추천" />
                                 <TabItem Header="빠른 이동" AutomationProperties.AutomationId="QuickMoveTab" />
                             </TabControl>
+                            <Border x:Name="TabIndicator" Height="2" Width="0" HorizontalAlignment="Left"
+                                    VerticalAlignment="Bottom" Background="{DynamicResource AccentBrush}"
+                                    IsHitTestVisible="False">
+                                <Border.RenderTransform>
+                                    <TranslateTransform x:Name="TabIndicatorTransform" />
+                                </Border.RenderTransform>
+                            </Border>
+                            </Grid>
 
-                            <!-- 필터 + 검색. 자연 크기로 두고, 한 줄에 안 들어가면 통째로 아랫줄로 내려간다. -->
-                            <StackPanel x:Name="FilterBar" Orientation="Horizontal"
-                                        Margin="12,0,0,6" VerticalAlignment="Center">
+                            <!-- 필터 + 검색. 자연 크기로 두고, 한 줄에 안 들어가면 통째로 아랫줄로 내려간다.
+                                 이 줄 자체도 다 못 들어가면(검색/지우기 버튼이 잘려 사라지지 않도록)
+                                 WrapPanel 로 한 번 더 감싸서 남는 항목이 그 다음 줄로 내려가게 한다. -->
+                            <WrapPanel x:Name="FilterBar" Orientation="Horizontal"
+                                        Margin="12,4,0,6" VerticalAlignment="Center">
 
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <!-- ComboBox/TextBox 는 내부 템플릿 때문에 Button 보다 눈에 띄게 높게(39px) 자랐다 -
+                                     Height 를 버튼과 같은 30 으로 맞춰서 한 줄이 고르게 보이게 한다. -->
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,4">
                                     <TextBlock Text="크기" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="0,0,6,0" />
                                     <ComboBox ItemsSource="{Binding MinSizeOptions}" SelectedItem="{Binding SelectedMinSize}"
-                                              Width="108" Margin="0,0,8,0" />
-                                    <Grid Width="118" Margin="0,0,6,0">
+                                              Width="108" Height="30" Margin="0,0,8,0" />
+                                    <Grid Width="118" Height="30" Margin="0,0,6,0">
                                         <TextBox x:Name="ExtFilterBox"
                                                  Text="{Binding ExtensionFilter, UpdateSourceTrigger=PropertyChanged}"
                                                  ToolTip="확장자 필터 (예: *.pdb;*.log)" />
@@ -356,16 +387,16 @@
                                             </TextBlock.Style>
                                         </TextBlock>
                                     </Grid>
-                                    <Button Content="적용" Command="{Binding ApplyFilterCommand}" Margin="0,0,14,0"
+                                    <Button Content="적용" Height="30" Command="{Binding ApplyFilterCommand}" Margin="0,0,14,0"
                                             ToolTip="왼쪽의 크기 · 확장자 조건을 목록에 적용합니다&#10;스캔을 다시 하지는 않습니다" />
                                 </StackPanel>
 
                                 <ComboBox ItemsSource="{Binding SearchScopeOptions}"
                                           SelectedItem="{Binding SelectedSearchScope}"
-                                          Width="112" Margin="0,0,6,0" VerticalAlignment="Center"
+                                          Width="112" Height="30" Margin="0,0,6,4" VerticalAlignment="Center"
                                           ToolTip="검색 범위 - '현재 폴더 하위'는 지금 보고 있는 폴더 안에서만 찾습니다" />
 
-                                <Grid Width="186" Margin="0,0,6,0" VerticalAlignment="Center">
+                                <Grid Width="186" Height="30" Margin="0,0,6,4" VerticalAlignment="Center">
                                     <TextBox x:Name="SearchBox"
                                              Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                              KeyDown="OnSearchKeyDown"
@@ -387,11 +418,11 @@
                                     </TextBlock>
                                 </Grid>
 
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Button Content="검색" Command="{Binding SearchCommand}" Margin="0,0,6,0"
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,4">
+                                    <Button Content="검색" Height="30" Command="{Binding SearchCommand}" Margin="0,0,6,0"
                                             km:ShortcutHint.Command="Search.Focus"
                                             km:ShortcutHint.Text="입력한 이름으로 찾습니다 {0}&#10;검색 상자에서 Enter 를 눌러도 됩니다" />
-                                    <Button Content="지우기" Command="{Binding ClearSearchCommand}"
+                                    <Button Content="지우기" Height="30" Command="{Binding ClearSearchCommand}"
                                             km:ShortcutHint.Command="Search.Cancel"
                                             km:ShortcutHint.Text="검색을 지우고 원래 목록으로 돌아갑니다 {0}" />
 
@@ -405,7 +436,7 @@
                                                VerticalAlignment="Center" Margin="10,0,0,0"
                                                Visibility="{Binding HasSearchFoldSummary, Converter={StaticResource BoolToVis}}" />
                                 </StackPanel>
-                            </StackPanel>
+                            </WrapPanel>
                         </WrapPanel>
                     </Border>
 
@@ -661,7 +692,8 @@
                             Background="{DynamicResource SurfaceBrush}"
                             BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0"
                             Visibility="Collapsed">
-                        <ListBox x:Name="CollectorList" Style="{StaticResource PlainList}" Padding="8,6">
+                        <ListBox x:Name="CollectorList" Style="{StaticResource PlainList}"
+                                 ItemContainerStyle="{StaticResource EntryListItem}" Padding="8,6">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Margin="4,2">
@@ -710,8 +742,14 @@
                                 <!-- 폴더 탭 다중 선택 + 삭제 (큰 파일 탭과 동일한 UX) -->
                                 <Border DockPanel.Dock="Bottom" Padding="12,9" Background="{DynamicResource SurfaceAltBrush}"
                                         BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0">
+                                    <!-- 창이 좁으면 왼쪽 요약 문구와 오른쪽 버튼이 같은 칸에서 겹쳤다 -
+                                         열을 나누고, 요약 문구 중 힌트는 자리가 없으면 잘라낸다(...). -->
                                     <Grid>
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock x:Name="FolderSelectionText" Style="{StaticResource H2}"
                                                        Text="0개 항목 선택됨" />
                                             <TextBlock Text="  ·  총 용량 " Style="{StaticResource Caption}" VerticalAlignment="Center" />
@@ -719,9 +757,10 @@
                                                        FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Text="0 B" />
                                             <TextBlock x:Name="FolderSelectionHint" Style="{StaticResource Caption}"
                                                        VerticalAlignment="Center" Margin="16,0,0,0"
+                                                       TextTrimming="CharacterEllipsis"
                                                        Text="Ctrl+클릭 개별 선택 · Shift+클릭 범위 선택 · Ctrl+A 전체 선택 · 폴더는 하위 전체가 삭제됩니다" />
                                         </StackPanel>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0">
                                             <Button Content="선택 해제" Click="OnClearFolderSelection" Margin="0,0,8,0" />
                                             <Button Content="삭제..." AutomationProperties.AutomationId="FolderDelete"
                                                     km:ShortcutHint.Command="Selection.Delete"
@@ -962,17 +1001,24 @@
                             <!-- 6. 선택 상태 + 다중 삭제 -->
                             <Border DockPanel.Dock="Bottom" Padding="12,9" Background="{DynamicResource SurfaceAltBrush}"
                                     BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0">
+                                <!-- 창이 좁으면 왼쪽 요약 문구와 오른쪽 버튼이 같은 칸에서 겹쳤다 -
+                                     열을 나누고, 요약 문구 중 힌트는 자리가 없으면 잘라낸다(...). -->
                                 <Grid>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock x:Name="LargeFileSelectionText" Style="{StaticResource H2}"
                                                    Text="0개 파일 선택됨" />
                                         <TextBlock Text="  ·  총 용량 " Style="{StaticResource Caption}" VerticalAlignment="Center" />
                                         <TextBlock x:Name="LargeFileSelectionSize" Style="{StaticResource Numeric}"
                                                    FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Text="0 B" />
                                         <TextBlock Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="16,0,0,0"
+                                                   TextTrimming="CharacterEllipsis"
                                                    Text="Ctrl+클릭 개별 선택 · Shift+클릭 범위 선택 · Ctrl+A 전체 선택" />
                                     </StackPanel>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0">
                                         <Button Content="선택 해제" Click="OnClearLargeFileSelection" Margin="0,0,8,0" />
                                         <Button Content="삭제..." AutomationProperties.AutomationId="LargeFileDelete"
                                                 km:ShortcutHint.Command="Selection.Delete"
@@ -1570,21 +1616,29 @@
                             <Border Grid.Row="3" Background="{DynamicResource SurfaceAltBrush}" Padding="14,10"
                                     BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0">
                                 <StackPanel>
+                                    <!-- 창이 좁으면 왼쪽 요약과 오른쪽 버튼 4개가 같은 칸에서 겹쳤다 -
+                                         열을 나누고, 버튼은 WrapPanel 로 둬서 자리가 없으면 아랫줄로 내려간다. -->
                                     <Grid>
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding SelectedCountText}" Style="{StaticResource H2}" />
                                             <TextBlock Text="  ·  예상 확보 용량 " Style="{StaticResource Caption}"
                                                        VerticalAlignment="Center" />
                                             <TextBlock Text="{Binding ExpectedFreeSpaceText}" Style="{StaticResource Numeric}"
                                                        FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
                                         </StackPanel>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                            <Button Content="추천 항목 선택" Command="{Binding SelectRecommendedCommand}" Margin="0,0,8,0" />
-                                            <Button Content="선택 해제" Command="{Binding ClearSelectionCommand}" Margin="0,0,8,0" />
-                                            <Button Content="정리 시뮬레이션" Command="{Binding SimulateCommand}" Margin="0,0,16,0" />
+                                        <WrapPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right"
+                                                   Margin="12,0,0,0">
+                                            <Button Content="추천 항목 선택" Command="{Binding SelectRecommendedCommand}" Margin="0,0,8,4" />
+                                            <Button Content="선택 해제" Command="{Binding ClearSelectionCommand}" Margin="0,0,8,4" />
+                                            <Button Content="정리 시뮬레이션" Command="{Binding SimulateCommand}" Margin="0,0,16,4" />
                                             <Button Content="삭제..." Style="{StaticResource AccentButton}"
+                                                    Margin="0,0,0,4"
                                                     Click="OnCleanupDelete" />
-                                        </StackPanel>
+                                        </WrapPanel>
                                     </Grid>
                                     <TextBlock Text="{Binding Simulation}"
                                                FontFamily="Consolas, Cascadia Mono, Malgun Gothic"
@@ -1603,6 +1657,12 @@
                                 </StackPanel>
                             </Border>
                         </Grid>
+
+                        <!-- 탭이 바뀌는 순간 직전 화면을 한 장 찍어 위에 덮어 두고 흐려지게 한다 -
+                             아래 패널들은 지금처럼 그대로 즉시 바뀌지만(그 많은 Visibility 가드를 건드리지 않는다),
+                             눈에는 끊기지 않고 이어지는 것으로 보인다. MainWindow.xaml.cs 의 OnTabChanged 가 채운다. -->
+                        <Image x:Name="TabCrossfade" Visibility="Collapsed" IsHitTestVisible="False"
+                               Stretch="Fill" HorizontalAlignment="Left" VerticalAlignment="Top" />
                     </Grid>
 
                     <GridSplitter x:Name="DockSplitter" Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
@@ -1621,8 +1681,8 @@
             <!-- ========== 47. 설정 패널 ========== -->
             <Border Grid.Column="2" Style="{StaticResource Card}" Width="330" HorizontalAlignment="Right" VerticalAlignment="Top"
                     Margin="0,10,10,0" Background="{DynamicResource SurfaceBrush}"
-                    ctl:Motion.Reveal="SlideLeft"
-                    Visibility="{Binding ShowSettings, Converter={StaticResource BoolToVis}}">
+                    ctl:Motion.Reveal="SlideLeft" Visibility="Collapsed"
+                    ctl:Motion.Open="{Binding ShowSettings}">
                 <!-- 설정이 늘어나면 창 아래로 넘쳐 맨 끝 항목이 조용히 잘려 나갔다(두 번 그랬다).
                      제목과 아래쪽 버튼 줄은 못 박고, 가운데만 스크롤한다 —
                      [단축키 설정...] 은 창을 아무리 줄여도 자리를 지킨다. -->
@@ -1689,6 +1749,64 @@
                     <TextBlock Text="{Binding ExclusionSummary}" Style="{StaticResource Caption}" Margin="0,0,0,4" />
                     <Button Content="제외 규칙 적용" Command="{Binding ApplyExclusionsCommand}"
                             AutomationProperties.AutomationId="ApplyExclusions" Margin="0,0,0,6" />
+
+                    <Separator Margin="0,16,0,12" />
+
+                    <!-- 정보 / 라이센스 / 업데이트 확인 -->
+                    <Border Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="48" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Image Source="Assets/app.ico" Width="40" Height="40" VerticalAlignment="Top"
+                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="정보" Style="{StaticResource Caption}" />
+                                <TextBlock Text="DiskAnalyzer" Style="{StaticResource H1}" Margin="0,2,0,0" />
+                                <TextBlock Style="{StaticResource Caption}" Margin="0,3,0,0">
+                                    <Run Text="v" /><Run Text="{Binding InternalVersion, Mode=OneWay}" />
+                                </TextBlock>
+
+                                <StackPanel Margin="0,10,0,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="업데이트 확인" Command="{Binding CheckForUpdateCommand}"
+                                                AutomationProperties.AutomationId="CheckForUpdate"
+                                                IsEnabled="{Binding IsCheckingUpdate, Converter={StaticResource InverseBool}}" />
+                                        <TextBlock Text="{Binding UpdateStatusText}" Style="{StaticResource Caption}"
+                                                   VerticalAlignment="Center" Margin="10,0,0,0" />
+                                    </StackPanel>
+
+                                    <StackPanel Margin="0,8,0,0"
+                                                Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="{Binding UpdateAvailableText}" FontWeight="SemiBold" />
+                                        <WrapPanel Margin="0,6,0,0">
+                                            <Button Content="업데이트 내려받기" Command="{Binding DownloadUpdateCommand}"
+                                                    Style="{StaticResource AccentButton}" Margin="0,0,8,8"
+                                                    AutomationProperties.AutomationId="DownloadUpdate"
+                                                    IsEnabled="{Binding IsDownloadingUpdate, Converter={StaticResource InverseBool}}" />
+                                            <Button Content="릴리스 노트" Command="{Binding OpenReleaseNotesCommand}"
+                                                    Margin="0,0,8,8" />
+                                        </WrapPanel>
+                                        <ProgressBar Height="6" Margin="0,0,0,4" Minimum="0" Maximum="1"
+                                                     Value="{Binding UpdateDownloadProgress, Mode=OneWay}"
+                                                     Visibility="{Binding IsDownloadingUpdate, Converter={StaticResource BoolToVis}}" />
+                                        <TextBlock Text="{Binding UpdateDownloadProgressText}" Style="{StaticResource Caption}"
+                                                   Visibility="{Binding IsDownloadingUpdate, Converter={StaticResource BoolToVis}}" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <TextBlock Style="{StaticResource Caption}" Margin="0,12,0,0" TextWrapping="Wrap"
+                                           Text="개인 및 내부 업무용으로 무료로 사용할 수 있습니다. 재판매 및 유료 재배포는 금지됩니다." />
+                                <WrapPanel Margin="0,10,0,0">
+                                    <Button Content="라이센스" Command="{Binding OpenLicenseCommand}"
+                                            AutomationProperties.AutomationId="OpenLicense" Margin="0,0,8,8" />
+                                    <Button Content="오픈소스 라이선스" Command="{Binding OpenOpenSourceLicensesCommand}"
+                                            AutomationProperties.AutomationId="OpenOpenSourceLicenses" Margin="0,0,8,8" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
 
                 </StackPanel>
                 </ScrollViewer>

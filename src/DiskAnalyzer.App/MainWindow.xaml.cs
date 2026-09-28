@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using DiskAnalyzer.App.Controls;
 using DiskAnalyzer.App.Keymaps;
 using DiskAnalyzer.App.ViewModels;
@@ -80,13 +81,50 @@ public partial class MainWindow : Window
         // 탐색기 등 다른 프로그램에서 파일을 바꾸고 돌아오면 두 패널을 실제 상태로 맞춘다(감시가 못 잡은 경우의 안전망).
         Activated += (_, _) => _vm.QuickMove.RefreshPanes(clearMeasureCache: false);
 
+        // 스캔 진행률 바의 빛줄기: 스캔 중에만 돈다. 설정에서 애니메이션을 끄면(스캔 도중이라도) 곧바로 멈춘다.
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.IsScanning)) Motion.SetBusy(ScanProgressBar, _vm.IsScanning);
+        };
+        Motion.EnabledChanged += (_, _) => Motion.SetBusy(ScanProgressBar, _vm.IsScanning);
+
         InitializePathBar();   // 경로 직접 입력 · 즐겨찾기 · 변경 감지 (MainWindow.PathBar.cs)
 
         SourceInitialized += (_, _) => ApplyDarkTitleBar();
         InstallShortcuts();
         Loaded += (_, _) => ApplyLayout();   // 저장된 도크 표시 상태를 처음부터 반영
         Loaded += OnLoadedStartupScan;
+        Loaded += (_, _) => UpdateTabIndicator(animate: false);   // 시작하자마자 왼쪽에서 미끄러져 오면 안 된다
     }
+
+    /// <summary>
+    /// 탭 밑줄 하나가 선택된 탭의 폭·위치로 미끄러진다 - 탭마다 따로 켜고 끄던 밑줄 대신이다.
+    /// 창을 좁혀 탭이 줄바꿈되는 것처럼 <b>선택이 바뀌지 않고 자리만 바뀔 때</b>는(<paramref name="animate"/> = false)
+    /// 미끄러지지 않고 곧바로 새 자리에 선다 - 레이아웃이 흔들릴 때마다 밑줄이 따라 미끄러지면 어지럽다.
+    /// </summary>
+    private void UpdateTabIndicator(bool animate)
+    {
+        if (Tabs.SelectedIndex < 0 ||
+            Tabs.ItemContainerGenerator.ContainerFromIndex(Tabs.SelectedIndex) is not TabItem item ||
+            !item.IsVisible || item.ActualWidth <= 0)
+            return;
+
+        Point pos = item.TranslatePoint(new Point(0, 0), TabIndicatorHost);
+        double x = pos.X, w = item.ActualWidth;
+
+        if (animate)
+        {
+            Motion.To(TabIndicatorTransform, TranslateTransform.XProperty, x, Motion.Normal, Motion.Ease);
+            Motion.To(TabIndicator, WidthProperty, w, Motion.Normal, Motion.Ease);
+        }
+        else
+        {
+            Motion.Settle(TabIndicatorTransform, TranslateTransform.XProperty, x);
+            Motion.Settle(TabIndicator, WidthProperty, w);
+        }
+    }
+
+    private void OnTabsSizeChanged(object sender, SizeChangedEventArgs e) => UpdateTabIndicator(animate: false);
 
     /// <summary>
     /// DiskAnalyzer.exe "C:\" [--tab 0~4]
@@ -185,10 +223,43 @@ public partial class MainWindow : Window
     {
         if (!IsLoaded || e.OriginalSource != Tabs) return;
 
+        // 실제 패널 전환은 지금처럼 그대로 순간적이다 - 그 위에 직전 화면 스냅샷을 한 장 덮어
+        // 흐리게 지우면, 아래에서 바뀌는 타이밍은 안 건드리고도 끊김만 없앨 수 있다.
+        BitmapSource? before = Motion.Enabled ? SnapshotTabHost() : null;
+
         ApplyLayout();
         _vm.ActiveTab = (LiveTab)Tabs.SelectedIndex;
         UpdateTreemap();
         UpdateSunburst();
+        UpdateTabIndicator(animate: true);
+
+        if (before != null) PlayTabCrossfade(before);
+    }
+
+    private BitmapSource? SnapshotTabHost()
+    {
+        int w = (int)Math.Ceiling(TabHost.ActualWidth), h = (int)Math.Ceiling(TabHost.ActualHeight);
+        if (w <= 0 || h <= 0) return null;
+
+        var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(TabHost);
+        rtb.Freeze();
+        return rtb;
+    }
+
+    private void PlayTabCrossfade(BitmapSource before)
+    {
+        TabCrossfade.Source = before;
+        TabCrossfade.Width = before.PixelWidth;
+        TabCrossfade.Height = before.PixelHeight;
+        TabCrossfade.Visibility = Visibility.Visible;
+        Motion.Settle(TabCrossfade, OpacityProperty, 1d);
+
+        Motion.To(TabCrossfade, OpacityProperty, 0d, Motion.Normal, Motion.Ease, () =>
+        {
+            TabCrossfade.Visibility = Visibility.Collapsed;
+            TabCrossfade.Source = null;   // 다음 캡처까지 비트맵을 붙들고 있지 않는다
+        });
     }
 
     private const double DefaultDockWidth = 400;
@@ -227,21 +298,39 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 닫는 쪽은 흘리지 않는다. 바로 아래에서 패널을 탭으로 옮겨 가므로, 폭만 천천히 줄이면
-        // 내용이 빠져나간 빈 칸이 접히는 것만 보인다 — 없는 편이 낫다.
-        DockHost.Visibility = Visibility.Collapsed;
-        DockSplitter.Visibility = Visibility.Collapsed;
-        DockSplitterColumn.Width = new GridLength(0);
-        DockColumn.MinWidth = 0;
-        Motion.WidthNow(DockColumn, 0d);
+        // 열릴 때 폭이 늘어나며 붙는 것과 짝이 맞도록, 닫힐 때도 폭을 흘려 줄인다.
+        // 내용(QuickMovePanel)은 폭이 줄어드는 동안 그대로 도크에 남아 있다가, 다 접힌
+        // 뒤에야 탭으로 옮겨 간다 — 그래야 "오른쪽에서 접혀 사라지는" 모습 그대로 보인다.
+        bool wasDocked = DockHost.Visibility == Visibility.Visible;
 
-        if (!ReferenceEquals(QuickMovePanel.Parent, TabHost))
+        void FinishClose()
         {
-            DetachQuickMove();
-            TabHost.Children.Add(QuickMovePanel);
+            DockHost.Visibility = Visibility.Collapsed;
+            DockSplitter.Visibility = Visibility.Collapsed;
+            DockSplitterColumn.Width = new GridLength(0);
+
+            if (!ReferenceEquals(QuickMovePanel.Parent, TabHost))
+            {
+                DetachQuickMove();
+                TabHost.Children.Add(QuickMovePanel);
+            }
+            QuickMovePanel.IsCompact = false;
+            QuickMovePanel.Visibility = onTab ? Visibility.Visible : Visibility.Collapsed;
         }
-        QuickMovePanel.IsCompact = false;
-        QuickMovePanel.Visibility = onTab ? Visibility.Visible : Visibility.Collapsed;
+
+        if (wasDocked && Motion.Enabled)
+        {
+            DockColumn.MinWidth = 0d;
+            Motion.Width(DockColumn, 0d, FinishClose);
+            Motion.To(DockHost, OpacityProperty, 0d, Motion.Normal, Motion.Ease,
+                () => Motion.Settle(DockHost, OpacityProperty, 1d));   // 다음에 다시 열릴 때를 위해 되돌려 둔다
+        }
+        else
+        {
+            DockColumn.MinWidth = 0;
+            Motion.WidthNow(DockColumn, 0d);
+            FinishClose();
+        }
     }
 
     private void DetachQuickMove()
@@ -396,7 +485,13 @@ public partial class MainWindow : Window
     }
 
     private void OnSidebarSplitterDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
-        => _vm.SidebarWidth = SidebarColumn.ActualWidth;
+    {
+        _vm.SidebarWidth = SidebarColumn.ActualWidth;
+
+        // GridSplitter 는 최소 폭에서 딱 멈춘다 - 더는 안 끌린다는 걸 살짝 튕겨서 손끝에 알려준다.
+        if (SidebarColumn.ActualWidth <= MainViewModel.MinSidebarWidth + 0.5d)
+            Motion.Bump(Sidebar, peak: 0.985d, origin: new Point(1d, 0.5d));
+    }
 
     private void OnToggleSidebar(object sender, RoutedEventArgs e)
     {

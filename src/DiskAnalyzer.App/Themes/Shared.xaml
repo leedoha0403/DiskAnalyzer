@@ -1,6 +1,7 @@
 ﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib"
+                    xmlns:ctl="clr-namespace:DiskAnalyzer.App.Controls">
 
     <!-- 17. 공통 스타일. 색상 값은 전부 DynamicResource 로 참조해서 테마 교체가 즉시 반영되게 한다. -->
 
@@ -46,6 +47,7 @@
         <Setter Property="Margin" Value="0" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="ctl:Motion.BumpOnClick" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -107,6 +109,7 @@
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushSoft}" />
         <Setter Property="Padding" Value="10,5" />
         <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="ctl:Motion.BumpOnClick" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
@@ -186,7 +189,7 @@
                     <Grid>
                         <ToggleButton Template="{StaticResource ComboToggle}" Focusable="False"
                                       IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
-                                      ClickMode="Press" />
+                                      ClickMode="Press" ctl:Motion.BumpOnClick="False" />
                         <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center"
                                           HorizontalAlignment="Left" IsHitTestVisible="False"
                                           Content="{TemplateBinding SelectionBoxItem}"
@@ -324,6 +327,13 @@
         </Setter>
     </Style>
 
+    <!-- 수집함처럼 사람이 하나씩 직접 담는, 작고 가상화가 굳이 필요 없는 목록에서만 쓴다 -
+         폴더 목록 · 선버스트 사이드바처럼 수천 줄까지 가는 가상화 목록에는 달지 않는다
+         (컨테이너가 재활용될 때마다 다시 나타나는 연출을 재생하면 스크롤마다 깜빡인다). -->
+    <Style x:Key="EntryListItem" TargetType="ListBoxItem" BasedOn="{StaticResource PlainListItem}">
+        <Setter Property="ctl:Motion.Reveal" Value="Fade" />
+    </Style>
+
     <Style x:Key="PlainList" TargetType="ListBox">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
@@ -439,8 +449,9 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
-                    <Border x:Name="Bd" Background="Transparent" BorderThickness="0,0,0,2"
-                            BorderBrush="Transparent" Padding="14,7" Margin="0,0,4,0">
+                    <!-- 아래 밑줄은 여기서 켜고 끄지 않는다 - 탭 전체를 가로질러 미끄러지는 밑줄 하나를
+                         MainWindow 가 따로 그린다(TabIndicator). 그 폭·위치를 이 Padding/Margin 으로 잰다. -->
+                    <Border x:Name="Bd" Background="Transparent" Padding="14,7" Margin="0,0,4,0">
                         <ContentPresenter ContentSource="Header" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -448,7 +459,6 @@
                             <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                             <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                             <Setter Property="FontWeight" Value="SemiBold" />
                         </Trigger>
@@ -471,7 +481,26 @@
                         <Border CornerRadius="3" Background="{TemplateBinding Background}" />
                         <Border x:Name="PART_Track" />
                         <Border x:Name="PART_Indicator" CornerRadius="3" HorizontalAlignment="Left"
-                                Background="{TemplateBinding Foreground}" />
+                                Background="{TemplateBinding Foreground}" ClipToBounds="True">
+                            <!-- 값이 멈춰 있어도 일하는 중임을 보여주는 빛줄기. 평소엔 Opacity 0 -
+                                 Motion.SetBusy 가 스캔 중에만 돌린다(App.xaml.cs 를 거치지 않는 컨트롤이라
+                                 이렇게 항상 자리만 잡아 두고 코드에서 켠다). -->
+                            <Border x:Name="PART_Shimmer" Width="70" HorizontalAlignment="Left" Opacity="0">
+                                <Border.RenderTransform>
+                                    <!-- x:Name 이 없으면 템플릿이 여러 ProgressBar 에서 공유되며 이 Freezable 을
+                                         봉인해 버린다(BeginAnimation 이 InvalidOperationException) - 이름을 주면
+                                         인스턴스마다 따로 만들어진다. -->
+                                    <TranslateTransform x:Name="PART_ShimmerTransform" X="-70" />
+                                </Border.RenderTransform>
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#00FFFFFF" Offset="0" />
+                                        <GradientStop Color="#40FFFFFF" Offset="0.5" />
+                                        <GradientStop Color="#00FFFFFF" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                        </Border>
                     </Grid>
                 </ControlTemplate>
             </Setter.Value>

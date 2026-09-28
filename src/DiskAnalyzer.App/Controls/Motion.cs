@@ -81,10 +81,14 @@ public static class Motion
     /// <summary>260ms. 화면이 통째로 바뀌는 것 — 폴더로 들어가고 나오기.</summary>
     public static readonly Duration Slow = new(TimeSpan.FromMilliseconds(260));
 
+    /// <summary>340ms. 줌처럼 "천천히, 끝까지 미끄러지듯" 이어야 하는 큰 이동. <see cref="Land"/> 와 짝지어 쓴다 —
+    /// 길이만 늘리고 되튀지는 않는다(<c>BackEase</c> 는 써 봤는데 반복 클릭에서 통통 튀는 느낌이 거슬렸다).</summary>
+    public static readonly Duration Glide = new(TimeSpan.FromMilliseconds(340));
+
     /// <summary>빠르게 나갔다가 부드럽게 멈춘다. 대부분의 연출이 이것이다.</summary>
     public static readonly IEasingFunction Ease = Frozen(new CubicEase { EasingMode = EasingMode.EaseOut });
 
-    /// <summary>더 급하게 멈춘다. 줌처럼 거리가 큰 움직임에 쓴다.</summary>
+    /// <summary>더 급하게 멈춘다 — 되튀지 않고 끝에서 한 번에 내려앉는다. 줌처럼 거리가 큰 움직임에 쓴다.</summary>
     public static readonly IEasingFunction Land = Frozen(new QuarticEase { EasingMode = EasingMode.EaseOut });
 
     /// <summary>양끝이 모두 부드럽다. 폭이 늘고 주는 것처럼 되돌아오는 움직임에 쓴다.</summary>
@@ -171,6 +175,30 @@ public static class Motion
 
         scale.BeginAnimation(ScaleTransform.ScaleXProperty, frames);
         scale.BeginAnimation(ScaleTransform.ScaleYProperty, frames);
+    }
+
+    /// <summary>
+    /// 누르면 살짝 눌렸다 돌아온다. Button · ToggleButton · CheckBox 스타일에 <c>ctl:Motion.BumpOnClick="True"</c>
+    /// 로 달아 둔다 — 클릭 핸들러를 화면마다 따로 걸지 않기 위해서다.
+    /// </summary>
+    public static readonly DependencyProperty BumpOnClickProperty = DependencyProperty.RegisterAttached(
+        "BumpOnClick", typeof(bool), typeof(Motion), new PropertyMetadata(false, OnBumpOnClickChanged));
+
+    public static void SetBumpOnClick(DependencyObject o, bool value) => o.SetValue(BumpOnClickProperty, value);
+    public static bool GetBumpOnClick(DependencyObject o) => (bool)o.GetValue(BumpOnClickProperty);
+
+    private static void OnBumpOnClickChanged(DependencyObject o, DependencyPropertyChangedEventArgs e)
+    {
+        if (o is not ButtonBase b) return;
+
+        b.Click -= OnBumpOnClick;
+        if ((bool)e.NewValue) b.Click += OnBumpOnClick;
+    }
+
+    private static void OnBumpOnClick(object sender, RoutedEventArgs e)
+    {
+        // 텍스트를 밀어내지 않게 살짝만 - 카운터가 바뀔 때 쓰는 1.16 배는 버튼엔 너무 크다.
+        if (sender is FrameworkElement el) Bump(el, peak: 1.045d, origin: new Point(0.5d, 0.5d));
     }
 
     // ---------------------------------------------------------------- Reveal: 나타날 때
@@ -270,6 +298,78 @@ public static class Motion
                 From(translate, TranslateTransform.XProperty, -Shift, 0d, Normal, Ease);
                 break;
         }
+    }
+
+    /// <summary>
+    /// <see cref="Reveal"/> 의 반대 — 사라질 때 같은 방향으로 되짚어 나간 뒤 <paramref name="onHidden"/> 을 부른다.
+    ///
+    /// <para>[왜 필요한가] <c>Visibility</c> 를 <c>Collapsed</c> 로 바꾸는 순간 레이아웃에서 즉시 빠져 <b>사라지는
+    /// 모습 자체를 그릴 수 없다</b> — <see cref="Reveal"/> 은 <c>IsVisibleChanged</c> 를 들어 들어오는 연출을 걸지만,
+    /// 나가는 연출은 <c>Collapsed</c> 가 되기 <b>전에</b> 걸어야 한다. 그래서 실제로 <c>Visibility</c> 를 바꾸는 일은
+    /// 이 메서드가 맡고, 부르는 쪽은 끝난 뒤 할 일(<paramref name="onHidden"/> — 보통 <c>Visibility = Collapsed</c>)만
+    /// 넘긴다.</para>
+    /// </summary>
+    public static void Hide(FrameworkElement element, RevealKind kind, Action onHidden)
+    {
+        if (!Enabled || kind == RevealKind.None || element.Visibility != Visibility.Visible)
+        {
+            onHidden();
+            return;
+        }
+
+        To(element, UIElement.OpacityProperty, 0d, Normal, Ease, onHidden);
+
+        // 사람이 XAML 에 걸어 둔 변환이 있으면 밀거나 줄이지 않는다 — Reveal 과 같은 이유다.
+        if (kind == RevealKind.Fade || !CanTransform(element)) return;
+
+        var (scale, translate) = EnsureTransform(element);
+        const double Shift = 10d;
+
+        switch (kind)
+        {
+            case RevealKind.Grow:
+                To(scale, ScaleTransform.ScaleXProperty, 0.97d, Normal, Ease);
+                To(scale, ScaleTransform.ScaleYProperty, 0.97d, Normal, Ease);
+                break;
+
+            case RevealKind.Rise:
+                To(translate, TranslateTransform.YProperty, Shift, Normal, Ease);
+                break;
+
+            case RevealKind.Drop:
+                To(translate, TranslateTransform.YProperty, -Shift, Normal, Ease);
+                break;
+
+            case RevealKind.SlideLeft:
+                To(translate, TranslateTransform.XProperty, Shift, Normal, Ease);
+                break;
+
+            case RevealKind.SlideRight:
+                To(translate, TranslateTransform.XProperty, -Shift, Normal, Ease);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// <c>Visibility</c> 대신 이것을 바인딩하거나 <see cref="SetOpen"/> 으로 켜고 끈다 — 나타날 때는
+    /// <see cref="Reveal"/>, 사라질 때는 <see cref="Hide"/> 를 지나 <b>둘 다</b> 애니메이션 설정에 매인다.
+    /// 이 요소는 반드시 <see cref="RevealProperty"/> 도 함께 달아 두어야 어느 방향으로 나타나고/사라질지가 정해진다.
+    /// 기본값은 닫힘 — XAML 의 <c>Visibility="Collapsed"</c> 과 같은 뜻으로 둔다.
+    /// </summary>
+    public static readonly DependencyProperty OpenProperty = DependencyProperty.RegisterAttached(
+        "Open", typeof(bool), typeof(Motion), new PropertyMetadata(false, OnOpenChanged));
+
+    public static void SetOpen(DependencyObject o, bool value) => o.SetValue(OpenProperty, value);
+    public static bool GetOpen(DependencyObject o) => (bool)o.GetValue(OpenProperty);
+
+    private static void OnOpenChanged(DependencyObject o, DependencyPropertyChangedEventArgs e)
+    {
+        if (o is not FrameworkElement element) return;
+
+        if ((bool)e.NewValue)
+            element.Visibility = Visibility.Visible; // IsVisibleChanged 가 Reveal 을 건다.
+        else
+            Hide(element, GetReveal(element), () => element.Visibility = Visibility.Collapsed);
     }
 
     /// <summary>연출을 전부 떼고 원래 모습으로 돌린다. 설정을 끄는 순간에도 이것으로 정리한다.</summary>
@@ -402,6 +502,43 @@ public static class Motion
         }
 
         To(bar, RangeBase.ValueProperty, to, Normal, Smooth);
+    }
+
+    // ---------------------------------------------------------------- 진행률 빛줄기
+
+    /// <summary>
+    /// 값이 한동안 안 바뀌어도(다음 스냅샷을 기다리는 동안) "일하는 중"임을 보여주는 은은한 빛줄기.
+    /// <see cref="ProgressBar"/> 의 컨트롤 템플릿에 미리 넣어 둔 <c>PART_Shimmer</c> 를 찾아 돌린다.
+    ///
+    /// <para>반복(<see cref="RepeatBehavior.Forever"/>) 애니메이션이라 켜진 동안 계속 CPU 를 쓴다 —
+    /// 그래서 꺼지면(<see cref="Enabled"/> 가 거짓이거나 <paramref name="busy"/> 가 거짓이면) 투명도만
+    /// 낮추지 않고 <c>BeginAnimation(p, null)</c> 로 완전히 멈춘다.</para>
+    /// </summary>
+    public static void SetBusy(ProgressBar bar, bool busy)
+    {
+        bar.ApplyTemplate();
+        if (bar.Template?.FindName("PART_Shimmer", bar) is not FrameworkElement shimmer ||
+            shimmer.RenderTransform is not TranslateTransform t)
+            return;
+
+        if (!busy || !Enabled)
+        {
+            shimmer.BeginAnimation(UIElement.OpacityProperty, null);
+            t.BeginAnimation(TranslateTransform.XProperty, null);
+            shimmer.Opacity = 0d;
+            return;
+        }
+
+        const double Span = 70d;
+        double travel = Math.Max(140d, bar.ActualWidth + Span * 2d);
+
+        var move = new DoubleAnimation(-Span, travel, new Duration(TimeSpan.FromMilliseconds(1400)))
+        {
+            EasingFunction = Frozen(new SineEase { EasingMode = EasingMode.EaseInOut }),
+            RepeatBehavior = RepeatBehavior.Forever,
+        };
+        t.BeginAnimation(TranslateTransform.XProperty, move);
+        shimmer.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.9d, Quick));
     }
 
     // ---------------------------------------------------------------- 칸 폭

@@ -161,13 +161,13 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         _glowIndex = -1;
         Motion.Settle(this, GlowProperty, 0d);
 
-        // 스캔 중의 각도 보간과 폴더를 드나드는 줌은 같은 화면에서 겹치지 않는다.
-        _morphFrom = null;
-        _morphGeometry = null;
         _fillFading = null;
 
         Rebuild();
         BeginZoom(previous);
+        // 줌(크기)과 각도 보간을 같이 건다 — 새로 들어온 조각은 제 자리에서 폭 0 으로 열려
+        // "링이 자라난다"는 느낌이 스캔 중뿐 아니라 폴더를 드나들 때도 보인다.
+        BeginMorph(previous);
     }
 
     /// <summary>
@@ -438,10 +438,17 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
     private double Morph => (double)GetValue(MorphProperty);
 
     /// <summary>
-    /// 각도 보간은 프레임마다 조각 기하를 다시 만든다. 스캔 중 한 겹은 보통 수십 개지만,
-    /// 그 이상으로 늘어나면 스캔이 느려지는 쪽이 손해다 — 넘으면 조용히 끈다.
+    /// 각도 보간은 프레임마다 조각 기하를 다시 만든다. 조각이 아주 많으면(수천 개) 그 비용이
+    /// 프레임 하나를 무겁게 만들므로 그 이상은 조용히 끈다 — Zoom 과 같은 한계를 쓴다.
+    ///
+    /// <para>예전에는 조각이 많을수록(<see cref="MorphDurationFor"/>) 길이를 줄여 프레임 비용을 아꼈는데,
+    /// 그러면 최상위 뎁스처럼 조각이 많은 자리에서 펼쳐지는 게 아니라 툭 튀어 보여 어지럽다는 말이 나왔다.
+    /// 느려지는 것은 괜찮으니 항상 같은 길이로 부드럽게 펼치고, 정말 무거워지는 지점(수천 개)에서만 끈다.</para>
     /// </summary>
-    private const int MorphSegmentLimit = 200;
+    private const int MorphSegmentLimit = ZoomSegmentLimit;
+
+    /// <summary>조각 수와 무관하게 항상 같은 길이로 펼친다 — 짧아질수록 "촤라락"이 아니라 "툭" 나타난 것처럼 보인다.</summary>
+    private static Duration MorphDurationFor(int segmentCount) => Motion.Normal;
 
     /// <summary>줌은 조각 수와 무관하지만, 조각이 수천 개면 한 프레임이 이미 무겁다.</summary>
     private const int ZoomSegmentLimit = 3000;
@@ -499,7 +506,7 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
             _ => 0.98d,
         };
 
-        Motion.From(this, TransitionProperty, 0d, 1d, Motion.Normal, Motion.Ease);
+        Motion.From(this, TransitionProperty, 0d, 1d, Motion.Glide, Motion.Land);
     }
 
     /// <summary>-1 = 안으로 들어갔다, 1 = 밖으로 나왔다, 0 = 이어지지 않는 화면.</summary>
@@ -547,7 +554,8 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         }
 
         // 스냅샷 간격(150ms)보다 조금 길다. 다음 스냅샷이 올 때까지 멈추지 않아 링이 끊기지 않고 자란다.
-        Motion.From(this, MorphProperty, 0d, 1d, Motion.Normal, Motion.Smooth);
+        // 다만 조각이 많은 자리(최상위 뎁스)는 그만큼 프레임 비용도 커지므로, 조각 수에 맞춰 길이를 줄인다.
+        Motion.From(this, MorphProperty, 0d, 1d, MorphDurationFor(n), Motion.Smooth);
     }
 
     /// <summary>묶음 조각("작은 항목 N개")은 실체가 없어 Id 가 없다. 겹 번호로 이어 준다.</summary>
