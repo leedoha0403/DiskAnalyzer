@@ -1,8 +1,7 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- DaisyDisk 팔레트. 제품 스크린샷에서 직접 읽은 값이다(docs/daisydisk.html 3.1).
-         배경 #242F48, 이음선 #293855, 경계 #414C64.
+    <!-- 남색 팔레트. 배경 #242F48, 이음선 #293855, 경계 #414C64.
          Dark / Light 를 건드리지 않고 세 번째 선택지로 얹는다 - 모든 스타일이 DynamicResource 라
          이 사전만 갈아 끼우면 창을 다시 만들지 않고 바뀐다. -->
 

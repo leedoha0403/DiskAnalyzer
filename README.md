@@ -7,8 +7,6 @@ Windows 10/11 용 디스크 용량 분석 프로그램. WizTree / TreeSize 와 �
 - 솔루션: `DiskAnalyzer.sln`
 - **배포용 실행 파일: `dist/DiskAnalyzer.exe`** — 단일 파일 · 자체 포함(.NET 설치 불필요), 그대로 복사해서 실행
   - `src/.../bin/Release/` 쪽 exe 는 옆의 DLL 과 .NET 9 Desktop Runtime 이 있어야 동작한다
-- **DaisyDisk 분석 · 비교: [`docs/daisydisk.html`](docs/daisydisk.html)** — 선버스트 모델 역공학(색 = 각도의 함수),
-  수집함 · 숨은 공간 모델, 이 프로젝트와의 기능/비주얼 차이와 반영 내역. 라이브 데모 포함
 - **설명서(HTML): [`docs/index.html`](docs/index.html)** — 사용법 · 동작 원리 · 성능 수치와 draw.io 다이어그램 6개
   (그림은 인터넷 연결이 필요하며, 원본은 `docs/diagrams/*.drawio`. 고친 뒤 `python docs/build.py` 로 다시 만든다)
 
@@ -150,7 +148,7 @@ for (int i = n - 1; i > 0; i--) {          // 폴더 크기 롤업 = 역순 1패
     오른쪽 목록이 그 폴더 내용으로 바뀐다(훑는 데 클릭 비용이 0). 누르면 진입, 가운데 원은 상위
   - **색은 위치에서 나온다** — 조각의 색조 = `4° + 0.75 × 각도`(한 바퀴에 0°→270°).
     부모·자식이 저절로 같은 계열이 되고, 이웃이 같은 색이 될 수 없으며, 목록의 색 점이 링과 자동으로 맞는다.
-    파일은 회색. DaisyDisk 제품 스크린샷을 극좌표로 샘플링해 얻은 규칙이다(`docs/daisydisk.html` 3.2)
+    파일은 회색.
   - **작은 항목을 버리지 않는다.** 너무 얇은 조각은 `작은 항목 N개` 하나로 합쳐 남은 각도를 정확히 채운다
     (Treemap 은 1px 미만이면 조용히 빠뜨려 그림의 합이 100%가 되지 않았다)
   - **8겹**을 그리되 안쪽 5겹은 제 두께, 6번째부터 0.6배로 얇아진다(원본 실측: 21px → 13 · 13 · 8px).
@@ -193,7 +191,7 @@ for (int i = n - 1; i > 0; i--) {          // 폴더 크기 롤업 = 역순 1패
   (Rectangle+Grid 조합 대비 행당 Visual 3~4개 절감)
 - Treemap 은 squarified 배치 + 카테고리 7색 + 깊이별 밝기, 폴더는 상단 헤더 띠에만 이름 표시
 - 테마: 팔레트 `ResourceDictionary` 만 교체(모든 스타일이 `DynamicResource`), 타이틀 바까지 다크.
-  **기본은 `Daisy`**(DaisyDisk 제품 스크린샷에서 읽은 남색 팔레트 `#242F48`), `Dark` / `Light` 도 그대로 고를 수 있다
+  **기본은 `Mint`**, `Dark` / `Light` / `Navy`(남색 팔레트 `#242F48`) 도 그대로 고를 수 있다
 
 ## 6. 메모리 전략
 
@@ -342,7 +340,7 @@ DiskAnalyzer/
       Services/  DriveService, CacheService, ExportService, ShellService,
                  FileVerifier, DeletionService, Collector
     DiskAnalyzer.App/                WPF UI
-      Themes/    Daisy.xaml(기본), Dark.xaml, Light.xaml, Shared.xaml
+      Themes/    Mint.xaml(기본), Dark.xaml, Light.xaml, Navy.xaml, Shared.xaml
       Controls/  RatioBar, TreemapControl, SunburstControl
       ViewModels/ MainViewModel, CleanupViewModel,
                   DeleteReviewViewModel, ObservableObject
@@ -623,7 +621,7 @@ dist/DiskAnalyzer.Bench.exe --gen D:\bench 1000000   # 합성 트리 생성
 
 Scan Mode(Auto/Fast/Compatibility) · Worker Count(Auto/수동) · Follow Symbolic Links ·
 **크기 기준**(논리/물리) · **하드 링크 한 번만 세기**(아래 14.2) ·
-Show Hidden/System Files · UI Theme(Daisy/Dark/Light/시스템) · **애니메이션**(아래 14.3) ·
+Show Hidden/System Files · UI Theme(Mint/Dark/Light/Navy/시스템) · **애니메이션**(아래 14.3) ·
 Size Unit(Auto/KB/MB/GB/TB) · Cache Results · **스캔 제외 규칙**(아래 14.1)
 
 ### 14.3 애니메이션 — 하나의 스위치가 전부를 쥔다

@@ -7,7 +7,7 @@ namespace DiskAnalyzer.App;
 
 public partial class App : Application
 {
-    public enum AppTheme { Dark, Light, System, Daisy, Mint }
+    public enum AppTheme { Dark, Light, System, Navy, Mint }
 
     private static AppTheme _theme = AppTheme.Dark;
 
@@ -28,12 +28,14 @@ public partial class App : Application
         ApplyTheme(ParseTheme(UiSettings.Load().Theme));
     }
 
-    /// <summary>설정 화면의 테마 이름(문자열로 저장)을 <see cref="AppTheme"/> 로 바꾼다.</summary>
+    /// <summary>설정 화면의 테마 이름(문자열로 저장)을 <see cref="AppTheme"/> 로 바꾼다.
+    /// "Daisy" 는 이전 버전에서 저장된 값이라 그대로 <see cref="AppTheme.Navy"/> 로 매핑한다.</summary>
     public static AppTheme ParseTheme(string name) => name switch
     {
         "Light" => AppTheme.Light,
         "Dark" => AppTheme.Dark,
-        "Daisy" => AppTheme.Daisy,
+        "Navy" => AppTheme.Navy,
+        "Daisy" => AppTheme.Navy,
         "Mint" => AppTheme.Mint,
         _ => AppTheme.System,
     };
@@ -54,7 +56,7 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// 17. Dark / Light / System / Daisy / Mint.
+    /// 17. Dark / Light / System / Navy / Mint.
     /// 팔레트 ResourceDictionary 만 교체하고 모든 스타일은 DynamicResource 로 참조하므로
     /// 창을 다시 만들지 않고 즉시 반영된다.
     /// </summary>
@@ -64,7 +66,7 @@ public partial class App : Application
         bool systemDark = theme == AppTheme.System && IsSystemDark();
         string source = theme switch
         {
-            AppTheme.Daisy => "Themes/Daisy.xaml",
+            AppTheme.Navy => "Themes/Navy.xaml",
             AppTheme.Mint => "Themes/Mint.xaml",
             AppTheme.Dark => "Themes/Dark.xaml",
             AppTheme.Light => "Themes/Light.xaml",

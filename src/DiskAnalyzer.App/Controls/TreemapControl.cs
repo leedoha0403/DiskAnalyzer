@@ -528,7 +528,7 @@ public sealed class TreemapControl : FrameworkElement
     {
         private const int Depths = MaxDepth + 2;
 
-        // 어두운 캔버스(Dark · Daisy) 용 - 짙게 시작해 깊이마다 밝아진다.
+        // 어두운 캔버스(Dark · Navy) 용 - 짙게 시작해 깊이마다 밝아진다.
         private static readonly Color[] DarkBase =
         {
             Color.FromRgb(0x36, 0x47, 0x5A),   // 0 폴더

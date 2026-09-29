@@ -2,7 +2,7 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- AIUsageMonitor(자매 앱, WPF) 의 팔레트를 그대로 옮겨 왔다 - 흰 카드 + 옅은 회록색 캔버스 +
-         짙은 잉크 텍스트 + 테엌그린 액센트(#1F8A70). Dark / Light / Daisy 를 건드리지 않고
+         짙은 잉크 텍스트 + 테엌그린 액센트(#1F8A70). Dark / Light / Navy 를 건드리지 않고
          네 번째 선택지로 얹는다(모든 스타일이 DynamicResource 라 사전만 갈아 끼우면 된다) -
          지금은 이 팔레트를 기본값으로 쓴다. -->
 
