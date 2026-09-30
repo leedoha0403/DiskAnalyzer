@@ -1,6 +1,8 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
+using DiskAnalyzer.App.Keymaps;
 using DiskAnalyzer.App.ViewModels;
+using DiskAnalyzer.Core.Keymaps;
 using DiskAnalyzer.Core.Services;
 
 namespace DiskAnalyzer.App.Views;
@@ -12,7 +14,7 @@ namespace DiskAnalyzer.App.Views;
 /// 관리자 권한 재시도 여부를 물어보고, 승인하면 이 exe 를 --kill-pid 로 상승 재실행한다
 /// (ProcessCleanerService.TryKillElevated / App.OnStartup). 이 화면 자체는 승격되지 않는다.
 /// </summary>
-public partial class ProcessCleanerView : System.Windows.Controls.UserControl
+public partial class ProcessCleanerView : System.Windows.Controls.UserControl, IShortcutTarget
 {
     private readonly ProcessCleanerViewModel _vm = ProcessCleanerViewModel.Shared;
 
@@ -49,9 +51,45 @@ public partial class ProcessCleanerView : System.Windows.Controls.UserControl
         if (e.OriginalSource is GridViewColumnHeader { Tag: string key }) _vm.ToggleSort(key);
     }
 
-    private void OnSelectAllClick(object sender, RoutedEventArgs e)
+    private void OnSelectAllClick(object sender, RoutedEventArgs e) => SelectAllVisible();
+
+    private void SelectAllVisible()
     {
         foreach (var row in _vm.Rows.Where(r => !r.IsProtected)) row.IsSelected = true;
+    }
+
+    /// <summary>
+    /// 단축키 라우터가 부른다. 이 화면의 목록은 "선택"이 아니라 체크박스라서, 폴더 목록용 전체 선택·삭제가 아니라
+    /// 체크 기준으로 처리해야 한다. 같은 명령 ID 를 쓰니 사용자가 키를 바꿔도 함께 따라온다.
+    /// 종료는 키 한 번으로 바로 실행하지 않고 항상 확인을 거친다(버튼과 달리 실수로 누르기 쉽다).
+    /// </summary>
+    public bool TryExecuteShortcut(string commandId)
+    {
+        switch (commandId)
+        {
+            case CommandIds.SearchFocus:
+                SearchBox.Focus();
+                SearchBox.SelectAll();
+                return true;
+            case CommandIds.SelectAll:
+                SelectAllVisible();
+                return true;
+            case CommandIds.SearchCancel:
+                if (_vm.HasSelection) { _vm.DeselectAll(); return true; }
+                if (_vm.SearchText.Length > 0) { _vm.SearchText = string.Empty; return true; }
+                return false;
+            case CommandIds.Delete:
+                _ = KillSelectedAsync(confirm: true);
+                return true;
+            case CommandIds.ProcessSelectSuspicious:
+                OnSelectSuspiciousClick(this, new RoutedEventArgs());
+                return true;
+            case CommandIds.ProcessToggleTree:
+                _vm.TreeMode = !_vm.TreeMode;
+                return true;
+            default:
+                return false;
+        }
     }
 
     private void OnToggleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -115,7 +153,9 @@ public partial class ProcessCleanerView : System.Windows.Controls.UserControl
     }
 
     /// <summary>[선택 종료]: 고른 줄을 모두 시도하고, 거부된 줄이 있으면 한 번만 물어봐서 관리자 권한으로 다시 시도한다.</summary>
-    private async void OnKillSelectedClick(object sender, RoutedEventArgs e)
+    private async void OnKillSelectedClick(object sender, RoutedEventArgs e) => await KillSelectedAsync(confirm: false);
+
+    private async Task KillSelectedAsync(bool confirm)
     {
         var selected = _vm.GetSelectedRows();
         if (selected.Count == 0)
@@ -123,6 +163,11 @@ public partial class ProcessCleanerView : System.Windows.Controls.UserControl
             _vm.Message = "먼저 종료할 프로세스를 선택하세요 (목록의 체크박스).";
             return;
         }
+
+        if (confirm && MessageBox.Show(Owner,
+                $"체크한 프로세스 {selected.Count:N0}개를 종료할까요?\n저장하지 않은 작업은 사라질 수 있습니다.",
+                "프로세스 종료", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+            return;
 
         var denied = await _vm.KillManyAsync(selected);
         if (denied.Count == 0) return;

@@ -23,7 +23,7 @@ public partial class MainWindow
     {
         CommandIds.TabsFolder, CommandIds.TabsTreemap, CommandIds.TabsSunburst,
         CommandIds.TabsLargeFiles, CommandIds.TabsFileTypes, CommandIds.TabsCleanup,
-        CommandIds.TabsQuickMove,
+        CommandIds.TabsQuickMove, CommandIds.TabsProcessCleaner,
     };
 
     private void InstallShortcuts()

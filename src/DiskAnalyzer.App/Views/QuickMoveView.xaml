@@ -164,13 +164,15 @@
                     ToolTip="목적지에서 선택한 항목을 출발지 폴더로 옮길 대기열에 추가" />
             <Button x:Name="CopyRightButton" Content="⧉→" Command="{Binding CopyRightCommand}" Style="{StaticResource MoveButton}"
                     AutomationProperties.AutomationId="CopyRight"
-                    ToolTip="빠른 복사: 출발지에서 선택한 항목을 목적지 폴더로 복사할 대기열에 추가 (원본은 그대로 남습니다)" />
+                    km:ShortcutHint.Command="QuickMove.QueueSelectedCopy"
+                    km:ShortcutHint.Text="빠른 복사: 출발지에서 선택한 항목을 목적지 폴더로 복사할 대기열에 추가 (원본은 그대로 남습니다)" />
             <Button x:Name="CopyLeftButton" Content="←⧉" Command="{Binding CopyLeftCommand}" Style="{StaticResource MoveButton}"
                     AutomationProperties.AutomationId="CopyLeft"
                     ToolTip="빠른 복사: 목적지에서 선택한 항목을 출발지 폴더로 복사할 대기열에 추가 (원본은 그대로 남습니다)" />
             <Button x:Name="SwapButton" Content="⇄" Command="{Binding SwapCommand}" Style="{StaticResource MoveButton}"
                     AutomationProperties.AutomationId="SwapPanes"
-                    ToolTip="출발지와 목적지의 현재 경로를 서로 바꿉니다 (선택은 해제됩니다)" />
+                    km:ShortcutHint.Command="QuickMove.SwapPanes"
+                    km:ShortcutHint.Text="출발지와 목적지의 현재 경로를 서로 바꿉니다 (선택은 해제됩니다)" />
         </StackPanel>
 
         <local:QuickMovePane x:Name="RightPane" DataContext="{Binding Right}" />
@@ -363,7 +365,8 @@
 
                         <WrapPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
                             <Button Content="{Binding PauseText}" Command="{Binding PauseCommand}" Margin="0,4,8,0"
-                                    MinWidth="90" AutomationProperties.AutomationId="PauseMove" />
+                                    MinWidth="90" AutomationProperties.AutomationId="PauseMove"
+                                    km:ShortcutHint.Command="QuickMove.Pause" km:ShortcutHint.Text="일시정지 / 재개" />
                             <Button Content="취소" Command="{Binding CancelCommand}" MinWidth="90" Margin="0,4,0,0"
                                     AutomationProperties.AutomationId="CancelMove" />
                         </WrapPanel>
@@ -377,7 +380,8 @@
                             <ToggleButton Content="실패 항목만 보기" IsChecked="{Binding ShowFailedOnly}" Margin="0,0,8,0"
                                           Visibility="{Binding HasFailures, Converter={StaticResource BoolToVis}}" />
                             <Button Content="다시 시도" Command="{Binding RetryCommand}" Margin="0,0,8,0"
-                                    Visibility="{Binding CanRetry, Converter={StaticResource BoolToVis}}" />
+                                    Visibility="{Binding CanRetry, Converter={StaticResource BoolToVis}}"
+                                    km:ShortcutHint.Command="QuickMove.Retry" km:ShortcutHint.Text="실패한 항목만 다시 시도" />
                             <Button Command="{Binding DismissResultCommand}" Style="{StaticResource AccentButton}" MinWidth="90"
                                     AutomationProperties.AutomationId="DismissResult">
                                 <Button.Content>

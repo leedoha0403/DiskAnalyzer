@@ -171,6 +171,11 @@ public sealed class KeymapTests : IDisposable
         Assert.Equal(Chord("Ctrl+Shift+C"), map.Get(CommandIds.CopyPathList));
         Assert.Equal(CommandIds.SearchFocus, map.Find(Chord("Ctrl+F")));
         Assert.Equal(Chord("Ctrl+Delete"), map.Get(CommandIds.ToggleCollect));
+        Assert.Equal(Chord("Ctrl+8"), map.Get(CommandIds.TabsProcessCleaner));
+        Assert.Equal(Chord("Ctrl+Shift+S"), map.Get(CommandIds.ProcessSelectSuspicious));
+        Assert.Equal(Chord("Ctrl+Shift+T"), map.Get(CommandIds.ProcessToggleTree));
+        Assert.Equal(Chord("Alt+Enter"), map.Get(CommandIds.QueueSelectedCopy));
+        Assert.True(map.Get(CommandIds.SwapPanes).IsEmpty);
         Assert.Null(map.Find(Chord("Ctrl+9")));
     }
 

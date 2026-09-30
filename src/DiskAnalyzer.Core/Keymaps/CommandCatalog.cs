@@ -12,6 +12,7 @@ public static class CommandIds
     public const string TabsFileTypes = "Tabs.FileTypes";
     public const string TabsCleanup = "Tabs.Cleanup";
     public const string TabsQuickMove = "Tabs.QuickMove";
+    public const string TabsProcessCleaner = "Tabs.ProcessCleaner";
     public const string TabsNext = "Tabs.Next";
     public const string TabsPrevious = "Tabs.Previous";
 
@@ -64,6 +65,18 @@ public static class CommandIds
 
     public const string QueueSelected = "QuickMove.QueueSelected";
     public const string StartMove = "QuickMove.Start";
+
+    /// <summary>선택 항목을 <b>복사</b>할 대기열에 추가한다(QueueSelected 의 복사판, 원본은 남는다).</summary>
+    public const string QueueSelectedCopy = "QuickMove.QueueSelectedCopy";
+    public const string SwapPanes = "QuickMove.SwapPanes";
+    public const string PauseMove = "QuickMove.Pause";
+    public const string RetryMove = "QuickMove.Retry";
+
+    /// <summary>프로세스 탭: 멈춤 의심 프로세스를 전부 체크한다.</summary>
+    public const string ProcessSelectSuspicious = "Process.SelectSuspicious";
+
+    /// <summary>프로세스 탭: 평면 목록 ↔ 부모 아래로 묶는 트리 보기.</summary>
+    public const string ProcessToggleTree = "Process.ToggleTree";
 }
 
 /// <param name="Id">설정 파일에 저장되는 안정적인 이름. 한 번 정하면 바꾸지 않는다.</param>
@@ -83,6 +96,7 @@ public static class CommandCatalog
     private const string QuickMove = "빠른 이동";
     private const string View = "화면";
     private const string CollectorCat = "수집함";
+    private const string Process = "프로세스";
 
     private static KeyChord Ctrl(string key) => new(key, Ctrl: true);
     private static KeyChord Alt(string key) => new(key, Alt: true);
@@ -98,6 +112,7 @@ public static class CommandCatalog
         new(CommandIds.TabsFileTypes, Tabs, "파일 유형 탭", Ctrl("5")),
         new(CommandIds.TabsCleanup, Tabs, "정리 추천 탭", Ctrl("6")),
         new(CommandIds.TabsQuickMove, Tabs, "빠른 이동 탭", Ctrl("7")),
+        new(CommandIds.TabsProcessCleaner, Tabs, "프로세스 탭", Ctrl("8")),
         new(CommandIds.TabsNext, Tabs, "다음 탭", Ctrl("Tab")),
         new(CommandIds.TabsPrevious, Tabs, "이전 탭", new("Tab", Ctrl: true, Shift: true)),
 
@@ -134,6 +149,13 @@ public static class CommandCatalog
 
         new(CommandIds.QueueSelected, QuickMove, "선택 항목을 이동 대기열에 추가", Ctrl("Enter")),
         new(CommandIds.StartMove, QuickMove, "대기열 이동 시작", new("Enter", Ctrl: true, Shift: true)),
+        new(CommandIds.QueueSelectedCopy, QuickMove, "선택 항목을 복사 대기열에 추가", Alt("Enter")),
+        new(CommandIds.SwapPanes, QuickMove, "출발지 ↔ 목적지 바꾸기", default),
+        new(CommandIds.PauseMove, QuickMove, "이동 / 복사 일시정지 · 재개", default),
+        new(CommandIds.RetryMove, QuickMove, "실패 항목 다시 시도", default),
+
+        new(CommandIds.ProcessSelectSuspicious, Process, "멈춤 의심 프로세스 선택", new("S", Ctrl: true, Shift: true)),
+        new(CommandIds.ProcessToggleTree, Process, "트리 보기 켜기 / 끄기", new("T", Ctrl: true, Shift: true)),
     };
 
     private static readonly Dictionary<string, CommandDef> ById = All.ToDictionary(c => c.Id, StringComparer.Ordinal);
