@@ -10,6 +10,8 @@ public sealed record UpdateAsset(string Name, string BrowserDownloadUrl, long Si
 public sealed record UpdateRelease(string TagName, string HtmlUrl, IReadOnlyList<UpdateAsset> Assets)
 {
     public UpdateAsset? FindZip() => Assets.FirstOrDefault(a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+    /// <summary>제자리 교체용 단일 exe. 릴리스에 이 이름으로 올려 두면 앱이 스스로 교체한다.</summary>
+    public UpdateAsset? FindExe(string exeName) => Assets.FirstOrDefault(a => a.Name.Equals(exeName, StringComparison.OrdinalIgnoreCase));
     public UpdateAsset? FindChecksums() => Assets.FirstOrDefault(a => a.Name.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase));
 }
 
@@ -122,8 +124,9 @@ public static class UpdateChecker
         }
     }
 
-    // sumsText 에 fileName 에 대한 줄이 있고 그 해시가 디스크의 파일과 다르면 false. 해당 줄이 없으면 true(검증 생략).
-    public static bool VerifyChecksum(string sumsText, string fileName, string filePath)
+    // sumsText 에 fileName 에 대한 줄이 있고 그 해시가 디스크의 파일과 다르면 false.
+    // 해당 줄이 없으면 true(검증 생략) — requireEntry 면 false. 스스로 실행할 exe 는 항상 requireEntry 로 검증한다.
+    public static bool VerifyChecksum(string sumsText, string fileName, string filePath, bool requireEntry = false)
     {
         var expected = sumsText
             .Split('\n')
@@ -131,7 +134,7 @@ public static class UpdateChecker
             .Select(l => l.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries))
             .FirstOrDefault(parts => parts.Length == 2 && parts[1].TrimStart('*').Equals(fileName, StringComparison.OrdinalIgnoreCase))
             ?.FirstOrDefault();
-        if (expected is null) return true;
+        if (expected is null) return !requireEntry;
 
         using var sha256 = SHA256.Create();
         using var stream = File.OpenRead(filePath);

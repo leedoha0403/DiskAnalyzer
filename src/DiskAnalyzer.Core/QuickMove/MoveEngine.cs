@@ -31,7 +31,7 @@ namespace DiskAnalyzer.Core.QuickMove;
 ///
 /// 인스턴스 하나는 <see cref="Run"/> 한 번에 쓴다. Run 은 호출한 스레드에서 동기로 실행되므로 UI 는 Task.Run 으로 부른다.
 /// </summary>
-public sealed class MoveEngine
+public sealed partial class MoveEngine
 {
     /// <summary>이 크기 이상의 파일은 "큰 파일"로 본다. 동시 복사 수를 제한하고 버퍼링 없는 I/O 를 쓴다.</summary>
     private const long LargeFile = 64L << 20;
@@ -149,7 +149,7 @@ public sealed class MoveEngine
             var renameGroups = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < requests.Count; i++)
             {
-                if (IsRenameMode(requests[i].SourcePath, requests[i].DestDirectory))
+                if (!requests[i].IsCopy && IsRenameMode(requests[i].SourcePath, requests[i].DestDirectory))
                 {
                     if (!renameGroups.TryGetValue(requests[i].DestDirectory, out var g))
                         renameGroups[requests[i].DestDirectory] = g = new List<int>();
@@ -212,7 +212,9 @@ public sealed class MoveEngine
             return;
         }
 
-        var o = MoveEntry(req.SourcePath, req.TargetPath, isDir.Value, req.Size, req.FileCount, nested: false, ctx);
+        var o = req.IsCopy
+            ? CopyEntry(req.SourcePath, req.TargetPath, isDir.Value, req.Size, req.FileCount, nested: false, ctx)
+            : MoveEntry(req.SourcePath, req.TargetPath, isDir.Value, req.Size, req.FileCount, nested: false, ctx);
         res.Status = o.Status;
         res.Error = o.Error;
         res.Note = o.Note;
@@ -372,6 +374,19 @@ public sealed class MoveEngine
     /// </summary>
     private Outcome? CopyThenDelete(string src, string ls, string ld, bool replace, long size, Ctx ctx)
     {
+        var copied = CopyFileOnly(ls, ld, replace, size, ctx);
+        if (copied is not { Status: MoveStatus.Moved }) return copied;
+
+        if (!DeleteSourceFile(src, PathUtil.ToExtended(src)))
+            return Outcome.Failed("복사는 끝났지만 원본을 지우지 못했습니다(다른 프로그램이 사용 중일 수 있습니다). 대상에 복사본이 있습니다.");
+
+        AddFiles(ctx, 1);
+        return Outcome.Moved();
+    }
+
+    /// <summary>CopyFileEx 로 파일 하나를 복사한다(원본은 그대로). 성공하면 Moved, 대상이 이미 있고 <paramref name="replace"/> 가 false 면 null.</summary>
+    private Outcome? CopyFileOnly(string ls, string ld, bool replace, long size, Ctx ctx)
+    {
         long last = 0;
         int cancel = 0;
 
@@ -405,10 +420,6 @@ public sealed class MoveEngine
             return Outcome.Failed(Describe(err));
         }
 
-        if (!DeleteSourceFile(src, PathUtil.ToExtended(src)))
-            return Outcome.Failed("복사는 끝났지만 원본을 지우지 못했습니다(다른 프로그램이 사용 중일 수 있습니다). 대상에 복사본이 있습니다.");
-
-        AddFiles(ctx, 1);
         return Outcome.Moved();
     }
 

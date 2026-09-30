@@ -36,6 +36,8 @@
                       ToolTip="빠른 이동 도크의 목적지(아래) 패널을 이 폴더(파일이면 그 폴더)로 엽니다" />
             <MenuItem Header="이동 대기열에 추가 (현재 목적지로)" Click="OnSendQueue"
                       ToolTip="목적지를 한 번 정해 두면, 이 항목들을 바로 이동 대기열에 담습니다" />
+            <MenuItem Header="복사 대기열에 추가 (현재 목적지로)" Click="OnSendCopyQueue"
+                      ToolTip="이 항목들을 원본은 그대로 두고 현재 목적지로 복사할 대기열에 담습니다" />
             <Separator />
             <MenuItem Header="휴지통으로 이동" Click="OnRecycle" km:ShortcutHint.Command="Selection.Delete" />
             <MenuItem Header="영구 삭제" Click="OnDeletePermanently" km:ShortcutHint.Command="Selection.DeletePermanent" />
@@ -245,9 +247,6 @@
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="저장소" Style="{StaticResource H2}"
                                Margin="14,11,14,8" />
-                    <!-- 프로세스 정리: 드라이브 카드 아래 빈 자리에 붙는 작은 패널. 다른 탭·스캔과 함께 쓸 수 있다. -->
-                    <views:ProcessCleanerPanel DockPanel.Dock="Bottom" Margin="14,0,14,12"
-                                               AutomationProperties.AutomationId="ProcessCleanerPanel" />
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                   Padding="14,0,14,4">
                         <!-- ScrollViewer.Padding 은 뷰포트(와 클리핑 경계) 자체를 안쪽으로 미는 것이라
@@ -350,6 +349,7 @@
                                 <TabItem Header="파일 유형" />
                                 <TabItem Header="정리 추천" />
                                 <TabItem Header="빠른 이동" AutomationProperties.AutomationId="QuickMoveTab" />
+                                <TabItem Header="프로세스" AutomationProperties.AutomationId="ProcessTab" />
                             </TabControl>
                             <Border x:Name="TabIndicator" Height="2" Width="0" HorizontalAlignment="Left"
                                     VerticalAlignment="Bottom" Background="{DynamicResource AccentBrush}"
@@ -862,6 +862,7 @@
                                             <MenuItem x:Name="TmSendLeft" Header="이동 (좌) - 빠른 이동 출발지로 보내기" Click="OnTreemapSendLeft" />
                                             <MenuItem x:Name="TmSendRight" Header="이동 (우) - 빠른 이동 목적지로 열기" Click="OnTreemapSendRight" />
                                             <MenuItem x:Name="TmSendQueue" Header="이동 대기열에 추가 (현재 목적지로)" Click="OnTreemapSendQueue" />
+                                            <MenuItem x:Name="TmSendCopyQueue" Header="복사 대기열에 추가 (현재 목적지로)" Click="OnTreemapSendCopyQueue" />
                                         </ContextMenu>
                                     </ctl:TreemapControl.ContextMenu>
                                 </ctl:TreemapControl>
@@ -1167,6 +1168,10 @@
                         <!-- ========== 빠른 이동 탭 ========== -->
                         <views:QuickMoveView x:Name="QuickMovePanel" Visibility="Collapsed" ctl:Motion.Reveal="Fade"
                                              DataContext="{Binding QuickMove}" />
+
+                        <!-- ========== 프로세스 정리 탭 (상태바 알림·설정의 버튼도 이 탭으로 온다) ========== -->
+                        <views:ProcessCleanerView x:Name="ProcessPanel" Visibility="Collapsed" ctl:Motion.Reveal="Fade"
+                                                  AutomationProperties.AutomationId="ProcessCleanerView" />
 
                         <Grid x:Name="CleanupPanel" Visibility="Collapsed" ctl:Motion.Reveal="Fade" DataContext="{Binding Cleanup}">
                             <Grid.RowDefinitions>
@@ -1788,7 +1793,7 @@
                                                 Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolToVis}}">
                                         <TextBlock Text="{Binding UpdateAvailableText}" FontWeight="SemiBold" />
                                         <WrapPanel Margin="0,6,0,0">
-                                            <Button Content="업데이트 내려받기" Command="{Binding DownloadUpdateCommand}"
+                                            <Button Content="{Binding UpdateButtonText}" Command="{Binding DownloadUpdateCommand}"
                                                     Style="{StaticResource AccentButton}" Margin="0,0,8,8"
                                                     AutomationProperties.AutomationId="DownloadUpdate"
                                                     IsEnabled="{Binding IsDownloadingUpdate, Converter={StaticResource InverseBool}}" />

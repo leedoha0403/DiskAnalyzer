@@ -24,6 +24,15 @@ public partial class App : Application
     {
         if (TryRunElevatedKillAndExit(e.Args)) return;
 
+        // SelfUpdater 가 띄운 임시 복사본: 파일을 바꾸고 새 exe 를 다시 실행한 뒤 창 없이 끝난다.
+        if (e.Args.Length == 4 && e.Args[0] == SelfUpdater.ApplyArgument)
+        {
+            SelfUpdater.RunHelper(e.Args);
+            Environment.Exit(0);
+            return;
+        }
+        SelfUpdater.CleanupBackup();
+
         base.OnStartup(e);
         ApplyTheme(ParseTheme(UiSettings.Load().Theme));
     }

@@ -65,7 +65,7 @@ public sealed class QuickMovePaneViewModel : ObservableObject
     public QuickMovePaneViewModel Other => ReferenceEquals(this, _owner.Left) ? _owner.Right : _owner.Left;
 
     /// <summary>이 패널의 선택 항목을 반대편 패널의 현재 폴더로 옮길 대기열에 넣는다.</summary>
-    public void QueueSelectedToOther() => _owner.AddToQueue(SelectedEntries, Other.CurrentPath);
+    public void QueueSelectedToOther(bool copy = false) => _owner.AddToQueue(SelectedEntries, Other.CurrentPath, copy);
 
     /// <summary>"이 폴더를 목적지로 사용": 오른쪽(목적지) 패널을 그 폴더로 연다.</summary>
     public void UseAsDestination(string folder) => _owner.Right.NavigateTo(folder);
@@ -75,7 +75,7 @@ public sealed class QuickMovePaneViewModel : ObservableObject
     public bool IsFavoritePath(string path) => _owner.Settings.IsFavorite(path);
 
     /// <summary>끌어다 놓은 항목을 <paramref name="destDirectory"/> 로 옮길 대기열에 넣는다(즉시 이동하지 않는다).</summary>
-    public void DropOn(string destDirectory, IReadOnlyList<FsEntry> items) => _owner.AddToQueue(items, destDirectory);
+    public void DropOn(string destDirectory, IReadOnlyList<FsEntry> items, bool copy = false) => _owner.AddToQueue(items, destDirectory, copy);
 
     public RelayCommand BackCommand { get; }
     public RelayCommand ForwardCommand { get; }

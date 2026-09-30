@@ -46,7 +46,7 @@ public sealed class QueueItemViewModel : ObservableObject
     private QueueItemState _state;
     private string _stateText = string.Empty;
 
-    public QueueItemViewModel(QuickMoveViewModel owner, FsEntry entry, string destDirectory)
+    public QueueItemViewModel(QuickMoveViewModel owner, FsEntry entry, string destDirectory, bool isCopy = false)
     {
         _owner = owner;
         Level = entry.Level;
@@ -57,6 +57,7 @@ public sealed class QueueItemViewModel : ObservableObject
             SourcePath = entry.FullPath,
             DestDirectory = destDirectory,
             IsDirectory = entry.IsDirectory,
+            IsCopy = isCopy,
             Size = entry.IsDirectory ? 0 : Math.Max(0, entry.Size),
             FileCount = 1,
         };
@@ -99,7 +100,11 @@ public sealed class QueueItemViewModel : ObservableObject
     /// <summary>같은 드라이브 안의 이동이면 "빠른 이동", 아니면 "복사 후 삭제". 추정이며 실제 방식은 엔진이 정한다.</summary>
     public bool IsSameVolume => PathUtil.SameVolume(_request.SourcePath, _request.DestDirectory);
 
-    public string ModeText => IsSameVolume ? "⚡ 즉시 이동" : $"{PathUtil.DriveName(_request.SourcePath)} → {PathUtil.DriveName(_request.DestDirectory)} 복사 후 삭제";
+    public bool IsCopy => _request.IsCopy;
+
+    public string ModeText => IsCopy ? "⧉ 복사 (원본 유지)"
+        : IsSameVolume ? "⚡ 즉시 이동"
+        : $"{PathUtil.DriveName(_request.SourcePath)} → {PathUtil.DriveName(_request.DestDirectory)} 복사 후 삭제";
 
     public QueueItemState State
     {
@@ -136,6 +141,7 @@ public sealed class QueueItemViewModel : ObservableObject
             SourcePath = _request.SourcePath,
             DestDirectory = destDirectory,
             IsDirectory = _request.IsDirectory,
+            IsCopy = _request.IsCopy,
             Size = _request.Size,
             FileCount = _request.FileCount,
         };

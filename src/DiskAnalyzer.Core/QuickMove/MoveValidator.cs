@@ -122,6 +122,9 @@ public static class MoveValidator
                 continue;
             }
 
+            // 복사는 원본을 건드리지 않으므로 원본의 보호 등급은 보지 않는다(대상 폴더 검사는 위에서 이미 했다).
+            if (req.IsCopy) continue;
+
             // 보호 등급. 폴더는 안쪽까지 훑어 가장 높은 등급을 본다(ProtectionEvaluator 가 상한을 둔다).
             var verdict = isDir.Value
                 ? ProtectionEvaluator.EvaluateFolderTree(req.SourcePath, CategoryFlags.None)
@@ -200,7 +203,7 @@ public static class MoveValidator
             string anyDest = g.First().DestDirectory;
             foreach (var r in g)
             {
-                if (PathUtil.SameVolume(r.SourcePath, r.DestDirectory)) inPlace += r.Size;
+                if (!r.IsCopy && PathUtil.SameVolume(r.SourcePath, r.DestDirectory)) inPlace += r.Size;
                 else required += r.Size;
             }
 

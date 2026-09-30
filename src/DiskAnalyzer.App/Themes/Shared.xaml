@@ -366,7 +366,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="GridViewColumnHeader">
                     <Border x:Name="Bd" Background="{DynamicResource SurfaceAltBrush}"
-                            BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,0,1,1" Height="30">
+                            BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,0,1,1" MinHeight="30">
                         <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center"
                                           HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" />
                     </Border>

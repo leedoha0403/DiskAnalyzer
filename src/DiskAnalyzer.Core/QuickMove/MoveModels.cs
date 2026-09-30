@@ -7,6 +7,9 @@ public sealed class MoveRequest
     public required string DestDirectory { get; init; }
     public bool IsDirectory { get; init; }
 
+    /// <summary>true 면 옮기지 않고 <b>복사</b>한다(원본은 그대로 남는다). 같은 드라이브여도 데이터를 실제로 복사한다.</summary>
+    public bool IsCopy { get; init; }
+
     /// <summary>총 용량(폴더는 하위 전체). 계산되기 전에는 0.</summary>
     public long Size { get; set; }
 

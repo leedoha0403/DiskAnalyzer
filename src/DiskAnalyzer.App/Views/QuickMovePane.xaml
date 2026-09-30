@@ -351,6 +351,7 @@
                             <MenuItem x:Name="MenuOpen" Header="열기" Click="OnMenuOpen" />
                             <MenuItem x:Name="MenuReveal" Header="폴더 위치 열기" Click="OnMenuReveal" />
                             <MenuItem x:Name="MenuQueue" Header="빠른 이동 대기열에 추가" Click="OnMenuQueue" />
+                            <MenuItem x:Name="MenuCopyQueue" Header="빠른 복사 대기열에 추가" Click="OnMenuCopyQueue" />
                             <Separator x:Name="MenuFolderSeparator" />
                             <MenuItem x:Name="MenuUseDest" Header="이 폴더를 목적지로 사용" Click="OnMenuUseDest" />
                             <MenuItem x:Name="MenuFavorite" Header="즐겨찾기에 추가" Click="OnMenuFavorite" />

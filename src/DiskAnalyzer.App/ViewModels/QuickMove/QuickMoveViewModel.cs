@@ -105,6 +105,10 @@ public sealed class QuickMoveViewModel : ObservableObject
             () => CanEditQueue && Left.SelectedEntries.Count > 0 && Right.HasPath);
         MoveLeftCommand = new RelayCommand(() => AddToQueue(Right.SelectedEntries, Left.CurrentPath),
             () => CanEditQueue && Right.SelectedEntries.Count > 0 && Left.HasPath);
+        CopyRightCommand = new RelayCommand(() => AddToQueue(Left.SelectedEntries, Right.CurrentPath, copy: true),
+            () => CanEditQueue && Left.SelectedEntries.Count > 0 && Right.HasPath);
+        CopyLeftCommand = new RelayCommand(() => AddToQueue(Right.SelectedEntries, Left.CurrentPath, copy: true),
+            () => CanEditQueue && Right.SelectedEntries.Count > 0 && Left.HasPath);
         SwapCommand = new RelayCommand(SwapPanes, () => Left.HasPath && Right.HasPath);
         ClearQueueCommand = new RelayCommand(ClearQueue, () => CanEditQueue && Queue.Count > 0);
         StartCommand = new RelayCommand(() => _ = StartAsync(), () => CanStart);
@@ -140,6 +144,8 @@ public sealed class QuickMoveViewModel : ObservableObject
 
     public RelayCommand MoveRightCommand { get; }
     public RelayCommand MoveLeftCommand { get; }
+    public RelayCommand CopyRightCommand { get; }
+    public RelayCommand CopyLeftCommand { get; }
     public RelayCommand SwapCommand { get; }
     public RelayCommand ClearQueueCommand { get; }
     public RelayCommand StartCommand { get; }
@@ -390,7 +396,7 @@ public sealed class QuickMoveViewModel : ObservableObject
     /// "대기열에 추가": 폴더를 열지 않고, 고른 항목을 지금 목적지(오른쪽 패널) 폴더로 옮길 대기열에 바로 넣는다.
     /// 목적지를 한 번 정해 두면 분석 탭에서 여러 항목을 우클릭 한 번씩으로 담을 수 있다.
     /// </summary>
-    public async Task AddPathsToQueueAsync(IReadOnlyList<string> paths)
+    public async Task AddPathsToQueueAsync(IReadOnlyList<string> paths, bool copy = false)
     {
         if (!Right.HasPath)
         {
@@ -404,7 +410,7 @@ public sealed class QuickMoveViewModel : ObservableObject
             ShowNotice("선택한 항목을 찾을 수 없습니다.");
             return;
         }
-        AddToQueue(entries, Right.CurrentPath);
+        AddToQueue(entries, Right.CurrentPath, copy);
     }
 
     /// <summary>"이동 (우)": 그 폴더를 목적지(오른쪽) 패널로 연다. 분석 탭에서 찾은 위치까지 다시 타고 들어가지 않아도 된다.</summary>
@@ -651,19 +657,22 @@ public sealed class QuickMoveViewModel : ObservableObject
         Right.NavigateTo(l);
     }
 
-    /// <summary>선택한 항목을 <paramref name="destDirectory"/> 로 옮길 대기열에 넣는다. 이 시점에는 아무것도 옮기지 않는다.</summary>
-    public void AddToQueue(IReadOnlyList<FsEntry> entries, string destDirectory)
+    /// <summary>
+    /// 선택한 항목을 <paramref name="destDirectory"/> 로 옮길(<paramref name="copy"/> 면 복사할) 대기열에 넣는다. 이 시점에는 아무것도 하지 않는다.
+    /// </summary>
+    public void AddToQueue(IReadOnlyList<FsEntry> entries, string destDirectory, bool copy = false)
     {
+        string verb = copy ? "복사" : "이동";
         if (!CanEditQueue)
         {
-            ShowNotice("이동하는 동안에는 대기열을 바꿀 수 없습니다.");
+            ShowNotice($"{(IsRunning ? "진행하는" : "처리하는")} 동안에는 대기열을 바꿀 수 없습니다.");
             return;
         }
         if (Phase == QuickMovePhase.Finished) DismissResult();
 
         if (entries.Count == 0)
         {
-            ShowNotice("먼저 이동할 파일이나 폴더를 선택하세요.");
+            ShowNotice($"먼저 {verb}할 파일이나 폴더를 선택하세요.");
             return;
         }
         if (string.IsNullOrEmpty(destDirectory))
@@ -677,7 +686,7 @@ public sealed class QuickMoveViewModel : ObservableObject
 
         foreach (var e in entries)
         {
-            if (e.IsProtected)
+            if (e.IsProtected && !copy)
             {
                 problems.Add($"{e.Name}: 보호된 시스템 항목이라 이동할 수 없습니다.");
                 continue;
@@ -691,10 +700,19 @@ public sealed class QuickMoveViewModel : ObservableObject
             var same = Queue.FirstOrDefault(q => PathUtil.Equal(q.SourcePath, e.FullPath));
             if (same != null)
             {
-                if (PathUtil.Equal(same.DestDirectory, destDirectory)) { alreadyThere++; continue; }
-                same.SetDestination(destDirectory);   // 같은 항목을 다른 목적지로 보내면 목적지만 바꾼다
-                added++;
-                continue;
+                if (same.IsCopy != copy)
+                {
+                    // 이동 ↔ 복사를 바꿔 다시 담으면 그 항목을 새 방식으로 교체한다.
+                    same.Cancel();
+                    Queue.Remove(same);
+                }
+                else
+                {
+                    if (PathUtil.Equal(same.DestDirectory, destDirectory)) { alreadyThere++; continue; }
+                    same.SetDestination(destDirectory);   // 같은 항목을 다른 목적지로 보내면 목적지만 바꾼다
+                    added++;
+                    continue;
+                }
             }
 
             if (Queue.Any(q => q.IsDirectory && PathUtil.IsUnder(q.SourcePath, e.FullPath)))
@@ -710,12 +728,15 @@ public sealed class QuickMoveViewModel : ObservableObject
                 Queue.Remove(inner);
             }
 
-            Queue.Add(new QueueItemViewModel(this, e, destDirectory));
+            Queue.Add(new QueueItemViewModel(this, e, destDirectory, copy));
             added++;
         }
 
         var parts = new List<string>();
-        if (added > 0) parts.Add($"{added:N0}개를 이동 대기열에 넣었습니다. [이동 시작]을 누르면 옮겨집니다.");
+        if (added > 0)
+            parts.Add(copy
+                ? $"{added:N0}개를 대기열에 복사로 넣었습니다. [이동 시작]을 누르면 복사됩니다(원본은 그대로 남습니다)."
+                : $"{added:N0}개를 이동 대기열에 넣었습니다. [이동 시작]을 누르면 옮겨집니다.");
         if (alreadyThere > 0) parts.Add($"{alreadyThere:N0}개는 이미 대기열에 있습니다.");
         if (problems.Count > 0)
             parts.Add(string.Join("  ", problems.Take(2)) + (problems.Count > 2 ? $"  … 외 {problems.Count - 2:N0}건" : string.Empty));
@@ -763,9 +784,13 @@ public sealed class QuickMoveViewModel : ObservableObject
         long total = Queue.Sum(q => q.Size);
         int unmeasured = Queue.Count(q => !q.IsMeasured);
 
+        int copies = Queue.Count(q => q.IsCopy);
+        string label = copies == 0 ? $"이동 예정 {Queue.Count:N0}개"
+            : copies == Queue.Count ? $"복사 예정 {Queue.Count:N0}개"
+            : $"이동 {Queue.Count - copies:N0} · 복사 {copies:N0}개";
         QueueSummary = Queue.Count == 0
             ? "이동 예정 없음"
-            : $"이동 예정 {Queue.Count:N0}개 · {SizeFormatter.Format(total)}" + (unmeasured > 0 ? "  (폴더 크기 계산 중…)" : string.Empty);
+            : $"{label} · {SizeFormatter.Format(total)}" + (unmeasured > 0 ? "  (폴더 크기 계산 중…)" : string.Empty);
 
         RouteHint = BuildRouteHint();
         Raise(nameof(HeaderHint));
@@ -777,9 +802,14 @@ public sealed class QuickMoveViewModel : ObservableObject
     {
         if (Queue.Count == 0) return string.Empty;
 
-        var cross = Queue.Where(q => !q.IsSameVolume).ToList();
-        int same = Queue.Count - cross.Count;
+        var copies = Queue.Where(q => q.IsCopy).ToList();
+        var moves = Queue.Where(q => !q.IsCopy).ToList();
+        var cross = moves.Where(q => !q.IsSameVolume).ToList();
+        int same = moves.Count - cross.Count;
         var lines = new List<string>();
+
+        if (copies.Count > 0)
+            lines.Add($"⧉ 복사 {copies.Count:N0}개 — 원본은 그대로 남고 대상에 복사본이 만들어집니다. 총 복사량 {SizeFormatter.Format(copies.Sum(q => q.Size))}");
 
         if (same > 0)
             lines.Add("⚡ 빠른 이동 — 같은 드라이브 내 이동입니다." + (cross.Count > 0 ? $" ({same:N0}개)" : string.Empty));
@@ -882,7 +912,7 @@ public sealed class QuickMoveViewModel : ObservableObject
 
         Phase = QuickMovePhase.Validating;
         IsQueueCollapsed = false;
-        ShowNotice("이동할 수 있는지 확인하는 중…");
+        ShowNotice(Queue.All(q => q.IsCopy) ? "복사할 수 있는지 확인하는 중…" : "이동할 수 있는지 확인하는 중…");
 
         try
         {
@@ -1122,6 +1152,8 @@ public sealed class QuickMoveViewModel : ObservableObject
     private void Finish(MoveSummary summary)
     {
         _summary = summary;
+        bool allCopy = _runItems.Count > 0 && _runItems.All(i => i.IsCopy);
+        string verb = allCopy ? "복사" : "이동";
 
         var rows = new List<ResultRowViewModel>();
         for (int i = 0; i < _runItems.Count && i < summary.Results.Count; i++)
@@ -1168,19 +1200,21 @@ public sealed class QuickMoveViewModel : ObservableObject
         }
         else if (summary.WasCancelled)
         {
-            ResultTitle = "이동을 취소했습니다.";
-            ResultDetail = $"완료 {moved:N0}개 · 처리하지 않음 {summary.NotProcessed:N0}개 — 이미 옮긴 항목은 원래 위치로 복원되지 않았습니다.";
+            ResultTitle = allCopy ? "복사를 취소했습니다." : "이동을 취소했습니다.";
+            ResultDetail = allCopy
+                ? $"완료 {moved:N0}개 · 처리하지 않음 {summary.NotProcessed:N0}개 — 이미 복사한 항목은 대상에 그대로 남아 있습니다."
+                : $"완료 {moved:N0}개 · 처리하지 않음 {summary.NotProcessed:N0}개 — 이미 옮긴 항목은 원래 위치로 복원되지 않았습니다.";
             ResultHasProblem = true;
         }
         else if (failed > 0)
         {
-            ResultTitle = "⚠ 일부 항목을 이동하지 못했습니다.";
+            ResultTitle = $"⚠ 일부 항목을 {verb}하지 못했습니다.";
             ResultDetail = $"성공 {moved:N0} · 실패 {failed:N0}" + (summary.Skipped > 0 ? $" · 건너뜀 {summary.Skipped:N0}" : string.Empty);
             ResultHasProblem = true;
         }
         else
         {
-            ResultTitle = "✓ 이동 완료";
+            ResultTitle = allCopy ? "✓ 복사 완료" : "✓ 이동 완료";
             ResultDetail = $"{summary.FilesMoved:N0}개 파일 · {SizeFormatter.Format(summary.BytesMoved)} · {FormatDuration(ActiveElapsed(summary))}"
                            + (summary.Skipped > 0 ? $" · 건너뜀 {summary.Skipped:N0}개" : string.Empty);
             ResultHasProblem = false;
@@ -1206,7 +1240,8 @@ public sealed class QuickMoveViewModel : ObservableObject
         _ = CheckLocationsAsync();
 
         // 옮겨진 항목은 스캔 결과에도 남아 있으면 안 된다(폴더/트리맵/큰 파일/정리 추천 탭이 그대로 보여 준다).
-        var relocated = summary.Results.Where(r => r.Status == MoveStatus.Moved).Select(r => r.Request.SourcePath).ToList();
+        // 복사는 원본이 그대로이므로 스캔 결과에서 빼지 않는다.
+        var relocated = summary.Results.Where(r => r.Status == MoveStatus.Moved && !r.Request.IsCopy).Select(r => r.Request.SourcePath).ToList();
         if (relocated.Count > 0) SourcesRelocated?.Invoke(relocated);
     }
 
@@ -1223,7 +1258,7 @@ public sealed class QuickMoveViewModel : ObservableObject
         Icon = r.Status switch { MoveStatus.Moved => "✓", MoveStatus.Skipped => "↷", MoveStatus.Failed => "⚠", _ => "–" },
         Text = r.Status switch
         {
-            MoveStatus.Moved => r.Note ?? "이동함",
+            MoveStatus.Moved => r.Note ?? (r.Request.IsCopy ? "복사함" : "이동함"),
             MoveStatus.Skipped => r.Error ?? "건너뜀",
             MoveStatus.Failed => r.Error ?? "실패",
             _ => r.Error ?? "처리하지 않음",
@@ -1248,7 +1283,7 @@ public sealed class QuickMoveViewModel : ObservableObject
 
     private void OpenResultLocation()
     {
-        var moved = _summary?.Results.FirstOrDefault(r => r.Status == MoveStatus.Moved);
+        var moved = _summary?.Results.FirstOrDefault(r => r.Status == MoveStatus.Moved);   // 복사도 대상 쪽 항목을 보여 준다
         if (moved != null && PathUtil.Exists(moved.FinalPath))
         {
             ShellService.OpenInExplorer(moved.FinalPath, isDirectory: false);   // 탐색기에서 그 항목을 선택해 보여 준다
@@ -1261,6 +1296,8 @@ public sealed class QuickMoveViewModel : ObservableObject
     {
         MoveRightCommand.RaiseCanExecuteChanged();
         MoveLeftCommand.RaiseCanExecuteChanged();
+        CopyRightCommand.RaiseCanExecuteChanged();
+        CopyLeftCommand.RaiseCanExecuteChanged();
         SwapCommand.RaiseCanExecuteChanged();
         ClearQueueCommand.RaiseCanExecuteChanged();
         StartCommand.RaiseCanExecuteChanged();

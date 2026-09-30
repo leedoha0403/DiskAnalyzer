@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows.Input;
@@ -98,7 +98,7 @@ public sealed class ProcessRowViewModel : ObservableObject
     public string DiskText => FormatRate(Info.DiskBytesPerSecond);
     public string StartedText => Info.StartTime?.ToString("HH:mm:ss") ?? "-";
 
-    private static string FormatRate(double bytesPerSecond) => bytesPerSecond switch
+    internal static string FormatRate(double bytesPerSecond) => bytesPerSecond switch
     {
         <= 0 => "0 KB/s",
         < 1024 * 1024 => $"{bytesPerSecond / 1024.0:N0} KB/s",
@@ -166,6 +166,36 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         }
     }
 
+    /// <summary>탭: 0 = 응답 없음/멈춤 의심만, 1 = 전체, 2 = 선택한 것만. ShowAll / ShowSelectedOnly 를 한 번에 바꾼다.</summary>
+    public int ViewTab
+    {
+        get => _showSelectedOnly ? 2 : _showAll ? 1 : 0;
+        set
+        {
+            if (value < 0 || value == ViewTab) return;
+            _showSelectedOnly = value == 2;
+            if (value != 2) _showAll = value == 1;
+            Raise(nameof(ViewTab));
+            Raise(nameof(ShowAll));
+            Raise(nameof(ShowSelectedOnly));
+            ApplyView();
+            PersistOptions();
+        }
+    }
+
+    public string SelectedTabHeader => $"선택 ({SelectedCount:N0})";
+
+    public string CpuTotalText => $"{Rows.Sum(r => r.CpuPercent):N1}%";
+    public string MemoryTotalText
+    {
+        get
+        {
+            double mb = Rows.Sum(r => r.MemoryBytes) / 1024.0 / 1024.0;
+            return mb >= 1024 ? $"{mb / 1024.0:N1} GB" : $"{mb:N0} MB";
+        }
+    }
+    public string DiskTotalText => ProcessRowViewModel.FormatRate(Rows.Sum(r => r.Info.DiskBytesPerSecond));
+
     private bool _hideIgnored = true;
 
     /// <summary>무시 목록에 올린 프로세스를 목록에서 감춘다(검색할 때는 그래도 찾을 수 있다).</summary>
@@ -175,6 +205,18 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         set
         {
             if (Set(ref _hideIgnored, value)) { ApplyView(); PersistOptions(); }
+        }
+    }
+
+    private bool _hideProtected = true;
+
+    /// <summary>종료할 수 없는 시스템 보호 프로세스(회색 줄)를 목록에서 감춘다(검색할 때는 그래도 찾을 수 있다).</summary>
+    public bool HideProtected
+    {
+        get => _hideProtected;
+        set
+        {
+            if (Set(ref _hideProtected, value)) { ApplyView(); PersistOptions(); }
         }
     }
 
@@ -202,18 +244,27 @@ public sealed class ProcessCleanerViewModel : ObservableObject
     public bool HasAttention => _attentionCount > 0;
     public string AttentionText => $"⚠ 프로세스 {_attentionCount}개 확인 필요";
 
-    /// <summary>앱 전체가 함께 쓰는 하나. 사이드바 패널과 상태바 배지가 같은 조회 결과를 본다.</summary>
+    /// <summary>앱 전체가 함께 쓰는 하나. "프로세스" 탭과 상태바 배지가 같은 조회 결과를 본다.</summary>
     public static ProcessCleanerViewModel Shared { get; } = new();
-
-    /// <summary>배지를 눌렀을 때 패널이 스스로 펼치라는 신호.</summary>
-    public event Action? RevealRequested;
-    public void RequestReveal() => RevealRequested?.Invoke();
 
     private System.Windows.Threading.DispatcherTimer? _monitor;
     private int _monitorTick;
 
-    /// <summary>패널이 펼쳐져 보이는 동안만 true - 그때는 2초마다, 아니면 약 16초마다 조용히 갱신한다.</summary>
-    public bool FastPolling { get; set; }
+    /// <summary>"프로세스" 탭이 보이는 동안만 true - 그때는 2초마다, 아니면 약 16초마다 조용히 갱신한다.</summary>
+    public bool FastPolling => _fastSources.Count > 0;
+
+    private readonly HashSet<object> _fastSources = new();
+
+    /// <summary>"지금 보고 있다"는 화면이 각자 켜고 끈다. 하나라도 켜져 있으면 빠르게 갱신한다.</summary>
+    public void SetFast(object source, bool on)
+    {
+        if (on) _fastSources.Add(source); else _fastSources.Remove(source);
+    }
+
+    /// <summary>상태바 알림·설정의 버튼이 "프로세스" 탭으로 이동해 달라고 메인 창에 요청한다.</summary>
+    public event EventHandler? OpenFullViewRequested;
+
+    public void OpenFullView() => OpenFullViewRequested?.Invoke(this, EventArgs.Empty);
 
     /// <summary>
     /// 창이 없어도 상태바 배지가 살아 있으려면 조회가 계속 돌아야 한다("멈춤 의심"은 CPU·I/O 변화가 없는 시간을
@@ -262,6 +313,7 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         s.ProcessTreeMode = _treeMode;
         s.ProcessShowAll = _showAll;
         s.ProcessHideIgnored = _hideIgnored;
+        s.ProcessHideProtected = _hideProtected;
         s.Save();
     }
 
@@ -348,11 +400,28 @@ public sealed class ProcessCleanerViewModel : ObservableObject
     public int SelectedCount => _selectedPids.Count;
     public bool HasSelection => _selectedPids.Count > 0;
 
+    private static string TotalsOf(IReadOnlyCollection<ProcessRowViewModel> rows)
+        => $"CPU {rows.Sum(r => r.CpuPercent):N1}% · 메모리 {rows.Sum(r => r.MemoryBytes) / 1024.0 / 1024.0:N0} MB · " +
+           $"디스크 {ProcessRowViewModel.FormatRate(rows.Sum(r => r.Info.DiskBytesPerSecond))}";
+
+    /// <summary>하단 고정 줄 - 지금 목록에 보이는 줄의 합계(트리·전체·선택만 보기 모두 보이는 그대로 합산).</summary>
+    public string TotalsText => $"표시 {Rows.Count:N0}개";
+
+    /// <summary>하단 고정 줄 - 체크한 프로세스 전체(접혀서 안 보이는 것 포함)의 합계.</summary>
+    public string SelectedTotalsText
+    {
+        get
+        {
+            var sel = GetSelectedRows();
+            return sel.Count == 0 ? "선택 없음" : $"선택 {sel.Count:N0}개 · {TotalsOf(sel)}";
+        }
+    }
+
     public string SelectionSummaryText
     {
         get
         {
-            var selected = Rows.Where(r => r.IsSelected).ToList();
+            var selected = GetSelectedRows();
             if (selected.Count == 0) return string.Empty;
 
             double totalMemoryMb = selected.Sum(r => r.MemoryBytes) / 1024.0 / 1024.0;
@@ -375,6 +444,7 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         _treeMode = s.ProcessTreeMode;
         _showAll = s.ProcessShowAll;
         _hideIgnored = s.ProcessHideIgnored;
+        _hideProtected = s.ProcessHideProtected;
         _loadingOptions = false;
 
         ProcessIgnoreList.Changed += OnIgnoreChanged;
@@ -393,6 +463,22 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         if (e.PropertyName is nameof(ProcessRowViewModel.IsSelected))
         {
             if (row.IsSelected) _selectedPids.Add(row.Pid); else _selectedPids.Remove(row.Pid);
+
+            // 부모를 체크/해제하면 자식·손자 전부(접혀서 안 보이는 것 포함)를 같이 바꾼다.
+            if (!_propagating)
+            {
+                _propagating = true;
+                try
+                {
+                    foreach (var pid in DescendantPids(row.Pid))
+                    {
+                        var info = _snapshot.FirstOrDefault(p => p.Pid == pid);
+                        if (info == null || ProcessCleanerService.IsProtected(info.Name)) continue;
+                        GetRow(info).IsSelected = row.IsSelected;
+                    }
+                }
+                finally { _propagating = false; }
+            }
             RaiseSelectionChanged();
 
             // 지금 이 호출 자체가 그 줄의 체크박스 바인딩이 갱신되는 도중이다 - 여기서 바로 ApplyView() 로
@@ -402,8 +488,48 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         }
         else if (e.PropertyName is nameof(ProcessRowViewModel.MemoryText) or nameof(ProcessRowViewModel.CpuText))
         {
-            if (row.IsSelected) Raise(nameof(SelectionSummaryText));
+            if (row.IsSelected) { Raise(nameof(SelectionSummaryText)); Raise(nameof(SelectedTotalsText)); }
         }
+    }
+
+    private bool _propagating;
+    private readonly Dictionary<int, ProcessRowViewModel> _rowCache = new();
+
+    /// <summary>화면에 안 보이는(접힌·필터된) 프로세스도 줄 객체를 하나로 유지해서 선택 상태를 보존한다.</summary>
+    private ProcessRowViewModel GetRow(ProcessInfo info)
+    {
+        if (!_rowCache.TryGetValue(info.Pid, out var row))
+        {
+            row = new ProcessRowViewModel(info) { IsSelected = _selectedPids.Contains(info.Pid) };
+            SubscribeRow(row);
+            _rowCache[info.Pid] = row;
+        }
+        return row;
+    }
+
+    private List<int> DescendantPids(int pid)
+    {
+        var kids = _snapshot.ToLookup(p => p.ParentPid, p => p.Pid);
+        var result = new List<int>();
+        var seen = new HashSet<int> { pid };
+        var stack = new Stack<int>();
+        stack.Push(pid);
+        while (stack.Count > 0)
+            foreach (var k in kids[stack.Pop()])
+                if (seen.Add(k)) { result.Add(k); stack.Push(k); }
+        return result;
+    }
+
+    /// <summary>체크된 프로세스 전체(접혀서 안 보이는 것 포함). 보호된 프로세스는 제외.</summary>
+    public List<ProcessRowViewModel> GetSelectedRows()
+        => _snapshot.Where(p => _selectedPids.Contains(p.Pid) && !ProcessCleanerService.IsProtected(p.Name))
+            .Select(GetRow).ToList();
+
+    public void DeselectAll()
+    {
+        foreach (var r in GetSelectedRows()) r.IsSelected = false;
+        _selectedPids.Clear();
+        RaiseSelectionChanged();
     }
 
     private void RaiseSelectionChanged()
@@ -411,6 +537,12 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         Raise(nameof(SelectedCount));
         Raise(nameof(HasSelection));
         Raise(nameof(SelectionSummaryText));
+        Raise(nameof(TotalsText));
+        Raise(nameof(SelectedTotalsText));
+        Raise(nameof(SelectedTabHeader));
+        Raise(nameof(CpuTotalText));
+        Raise(nameof(MemoryTotalText));
+        Raise(nameof(DiskTotalText));
     }
 
     public async Task RefreshAsync()
@@ -420,6 +552,9 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         try
         {
             _snapshot = await Task.Run(() => ProcessCleanerService.ListProcesses());
+            var alive = _snapshot.Select(p => p.Pid).ToHashSet();
+            _selectedPids.RemoveWhere(p => !alive.Contains(p));
+            foreach (var dead in _rowCache.Keys.Where(k => !alive.Contains(k)).ToList()) _rowCache.Remove(dead);
             ApplyView();   // Rows 를 지우지 않는다 - 같은 Pid 줄은 재사용해서 선택 상태를 그대로 둔다
             UpdateAttentionCount();
         }
@@ -445,7 +580,12 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         // 검색어가 있으면 "응답 없음/멈춤 의심만" 필터는 무시하고 전체에서 찾는다 - 창 없는 자식(pwsh 등)이
         // 기본 필터에 가려 "claude" 로 검색해도 0건이던 문제.
         string term = SearchText.Trim();
-        if (term.Length > 0)
+        // "선택 항목만 보기"는 검색·기본 필터와 상관없이 체크한 것을 전부 모아 보여준다(다른 검색어로 고른 것도 함께).
+        if (ShowSelectedOnly)
+        {
+            query = query.Where(p => _selectedPids.Contains(p.Pid));
+        }
+        else if (term.Length > 0)
         {
             query = query.Where(p =>
                 p.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
@@ -458,12 +598,15 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         {
             if (!ShowAll) query = query.Where(Attn);
             if (HideIgnored) query = query.Where(p => !IsIgnoredName(p.Name));
+            if (HideProtected) query = query.Where(p => !ProcessCleanerService.IsProtected(p.Name));
         }
 
-        if (ShowSelectedOnly)
-            query = query.Where(p => _selectedPids.Contains(p.Pid));
-
         var visible = query.ToList();
+
+        // 트리로 볼 때 검색/선택 결과만 덩그러니 나오면 누구 밑인지 알 수 없다 - 상위 프로세스 체인을 함께 보여준다.
+        bool narrowed = ShowSelectedOnly || term.Length > 0;
+        if (TreeMode && narrowed)
+            AddAncestors(visible);
 
         var placed = new List<(ProcessInfo Info, int Depth, int Count, bool Expanded)>();
         if (TreeMode)
@@ -471,20 +614,12 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         else
             foreach (var info in Sort(visible)) placed.Add((info, 0, 0, true));
 
-        var existing = Rows.ToDictionary(r => r.Pid);
-
         Rows.Clear();
         foreach (var (info, depth, count, expanded) in placed)
         {
-            if (!existing.TryGetValue(info.Pid, out var row))
-            {
-                row = new ProcessRowViewModel(info);
-                SubscribeRow(row);
-            }
-            else
-            {
-                row.UpdateInfo(info);
-            }
+            bool known = _rowCache.ContainsKey(info.Pid);
+            var row = GetRow(info);
+            if (known) row.UpdateInfo(info);
 
             row.SetIgnored(IsIgnoredName(info.Name));
             row.SetTree(TreeMode, depth, count, expanded);
@@ -498,6 +633,21 @@ public sealed class ProcessCleanerViewModel : ObservableObject
             : "표시할 프로세스가 없습니다.";
 
         RaiseSelectionChanged();
+    }
+
+    private void AddAncestors(List<ProcessInfo> visible)
+    {
+        var all = _snapshot.ToDictionary(p => p.Pid);
+        var have = visible.Select(p => p.Pid).ToHashSet();
+        foreach (var p in visible.ToList())
+        {
+            int up = p.ParentPid;
+            for (int guard = 0; up != 0 && guard < 32 && all.TryGetValue(up, out var anc); guard++)
+            {
+                if (have.Add(anc.Pid)) visible.Add(anc);
+                up = anc.ParentPid;
+            }
+        }
     }
 
     private IEnumerable<ProcessInfo> Sort(IEnumerable<ProcessInfo> items)

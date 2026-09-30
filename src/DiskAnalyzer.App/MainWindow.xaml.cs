@@ -78,6 +78,7 @@ public partial class MainWindow : Window
         };
         QuickMovePanel.DockCloseRequested += (_, _) => _vm.QuickMove.IsDockVisible = false;
         QuickMovePanel.OpenAsTabRequested += (_, _) => Tabs.SelectedIndex = (int)LiveTab.QuickMove;
+        ViewModels.ProcessCleanerViewModel.Shared.OpenFullViewRequested += (_, _) => Tabs.SelectedIndex = (int)LiveTab.ProcessCleaner;
 
         // 탐색기 등 다른 프로그램에서 파일을 바꾸고 돌아오면 두 패널을 실제 상태로 맞춘다(감시가 못 잡은 경우의 안전망).
         Activated += (_, _) => _vm.QuickMove.RefreshPanes(clearMeasureCache: false);
@@ -394,6 +395,7 @@ public partial class MainWindow : Window
         LargeFilesPanel.Visibility = tab == LiveTab.LargeFiles ? Visibility.Visible : Visibility.Collapsed;
         FileTypesPanel.Visibility = tab == LiveTab.FileTypes ? Visibility.Visible : Visibility.Collapsed;
         CleanupPanel.Visibility = tab == LiveTab.Cleanup ? Visibility.Visible : Visibility.Collapsed;
+        ProcessPanel.Visibility = tab == LiveTab.ProcessCleaner ? Visibility.Visible : Visibility.Collapsed;
         PlaceQuickMove(tab);
 
         // 드라이브 카드는 이제 왼쪽 사이드바에 있어 세로 공간을 빼앗지 않는다.
@@ -405,7 +407,7 @@ public partial class MainWindow : Window
         DockToggle.Visibility = quickTab ? Visibility.Collapsed : Visibility.Visible;
 
         // 크기 / 확장자 / 검색 막대는 스캔 결과를 거르는 도구라 빠른 이동에서는 의미가 없다.
-        FilterBar.Visibility = tab == LiveTab.QuickMove ? Visibility.Collapsed : Visibility.Visible;
+        FilterBar.Visibility = tab is LiveTab.QuickMove or LiveTab.ProcessCleaner ? Visibility.Collapsed : Visibility.Visible;
 
         FolderPanel.Visibility = folder ? Visibility.Visible : Visibility.Collapsed;
         TreemapPanel.Visibility = treemap ? Visibility.Visible : Visibility.Collapsed;
@@ -734,7 +736,11 @@ public partial class MainWindow : Window
         else SendCurrentFolder(left: false);
     }
 
-    private void OnSendQueue(object sender, RoutedEventArgs e)
+    private void OnSendQueue(object sender, RoutedEventArgs e) => SendRowsToQueue(sender, copy: false);
+
+    private void OnSendCopyQueue(object sender, RoutedEventArgs e) => SendRowsToQueue(sender, copy: true);
+
+    private void SendRowsToQueue(object sender, bool copy)
     {
         var rows = SelectedRows(sender);
         if (rows.Count == 0)
@@ -743,7 +749,7 @@ public partial class MainWindow : Window
             return;
         }
         RevealQuickMove();
-        _ = _vm.QuickMove.AddPathsToQueueAsync(rows.Select(r => r.FullPath).ToList());
+        _ = _vm.QuickMove.AddPathsToQueueAsync(rows.Select(r => r.FullPath).ToList(), copy);
     }
 
     private static string? FolderOf(string path, bool isDirectory)
@@ -784,6 +790,7 @@ public partial class MainWindow : Window
         TmCopyPath.Visibility = visibility;
         TmSeparator.Visibility = visibility;
         TmSendQueue.Visibility = visibility;
+        TmSendCopyQueue.Visibility = visibility;
         UpdateTreemapFavoriteItem();
     }
 
@@ -803,7 +810,11 @@ public partial class MainWindow : Window
         else SendCurrentFolder(left: true);
     }
 
-    private void OnTreemapSendQueue(object sender, RoutedEventArgs e)
+    private void OnTreemapSendQueue(object sender, RoutedEventArgs e) => SendTreemapItemToQueue(copy: false);
+
+    private void OnTreemapSendCopyQueue(object sender, RoutedEventArgs e) => SendTreemapItemToQueue(copy: true);
+
+    private void SendTreemapItemToQueue(bool copy)
     {
         if (Treemap.ContextItem is not { } item)
         {
@@ -811,7 +822,7 @@ public partial class MainWindow : Window
             return;
         }
         RevealQuickMove();
-        _ = _vm.QuickMove.AddPathsToQueueAsync(new[] { item.FullPath });
+        _ = _vm.QuickMove.AddPathsToQueueAsync(new[] { item.FullPath }, copy);
     }
 
     private void OnTreemapSendRight(object sender, RoutedEventArgs e)

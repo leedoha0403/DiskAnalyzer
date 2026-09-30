@@ -76,4 +76,6 @@ public enum LiveTab
     Cleanup,
     /// <summary>빠른 이동. 스캔 결과를 쓰지 않는 탭이라 스캔 단계에서는 별도 처리가 다일.</summary>
     QuickMove,
+    /// <summary>프로세스 정리. 스캔 결과를 쓰지 않는 탭이라 스캔 단계에서는 QuickMove 처럼 별도로 다루지 않아도 된다.</summary>
+    ProcessCleaner,
 }

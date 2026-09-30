@@ -337,14 +337,15 @@ public partial class QuickMovePane : UserControl, IShortcutTarget
             return;
         }
 
+        bool copy = (e.KeyStates & DragDropKeyStates.ControlKey) != 0;
         if (_vm != null) _vm.IsDropTarget = false;   // 패널 전체 안내는 끄고, 버튼 하나만 강조한다
         if (sender is Button b && b.Tag is string path)
         {
             b.SetResourceReference(BackgroundProperty, "AccentSoftBrush");
             b.SetResourceReference(BorderBrushProperty, "AccentBrush");
-            b.ToolTip = $"{path} 으로 이동";
+            b.ToolTip = $"{path} 으로 {(copy ? "복사" : "이동")}";
         }
-        e.Effects = DragDropEffects.Move;
+        e.Effects = copy ? DragDropEffects.Copy : DragDropEffects.Move;
         e.Handled = true;
     }
 
@@ -362,7 +363,7 @@ public partial class QuickMovePane : UserControl, IShortcutTarget
 
         var data = QuickMoveDragData.Current;
         if (data == null || _vm == null) return;
-        _vm.DropOn(path, data.Items);
+        _vm.DropOn(path, data.Items, copy: (e.KeyStates & DragDropKeyStates.ControlKey) != 0);
     }
 
     private static void ResetChip(Button b)
@@ -486,7 +487,7 @@ public partial class QuickMovePane : UserControl, IShortcutTarget
         QuickMoveDragData.Current = new QuickMoveDragData(_vm, items);
         try
         {
-            DragDrop.DoDragDrop(ItemList, data, DragDropEffects.Move);
+            DragDrop.DoDragDrop(ItemList, data, DragDropEffects.Move | DragDropEffects.Copy);   // Ctrl 을 누른 채 놓으면 복사
         }
         finally
         {
@@ -529,14 +530,16 @@ public partial class QuickMovePane : UserControl, IShortcutTarget
             return;
         }
 
-        if (!_vm.IsDropTarget)
+        bool copy = (e.KeyStates & DragDropKeyStates.ControlKey) != 0;
+        string detail = $"{_vm.CurrentPath} 으로 {(copy ? "복사" : "이동")}";
+        if (!_vm.IsDropTarget || _vm.DropDetail != detail)
         {
             _vm.DropTitle = "여기에 놓기";
-            _vm.DropDetail = $"{_vm.CurrentPath} 으로 이동";
+            _vm.DropDetail = detail;
             _vm.DropCount = Describe(data.Items);
             _vm.IsDropTarget = true;
         }
-        e.Effects = DragDropEffects.Move;
+        e.Effects = copy ? DragDropEffects.Copy : DragDropEffects.Move;
         e.Handled = true;
     }
 
@@ -555,7 +558,7 @@ public partial class QuickMovePane : UserControl, IShortcutTarget
         if (data == null || ReferenceEquals(data.Source, _vm)) return;
 
         // 놓는 즉시 이동하지 않는다. 대기열에 넣고, 사용자가 검토한 뒤 [이동 시작]을 누른다.
-        _vm.DropOn(_vm.CurrentPath, data.Items);
+        _vm.DropOn(_vm.CurrentPath, data.Items, copy: (e.KeyStates & DragDropKeyStates.ControlKey) != 0);
     }
 
     private static string Describe(IReadOnlyList<FsEntry> items)
@@ -593,6 +596,7 @@ public partial class QuickMovePane : UserControl, IShortcutTarget
             MenuFavorite.Header = _vm.IsFavoritePath(selected[0].FullPath) ? "즐겨찾기에서 제거" : "즐겨찾기에 추가";
 
         MenuQueue.Header = $"빠른 이동 대기열에 추가 ({selected.Count:N0}개)";
+        MenuCopyQueue.Header = $"빠른 복사 대기열에 추가 ({selected.Count:N0}개)";
         MenuName.Visibility = single ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -608,6 +612,8 @@ public partial class QuickMovePane : UserControl, IShortcutTarget
     }
 
     private void OnMenuQueue(object sender, RoutedEventArgs e) => _vm?.QueueSelectedToOther();
+
+    private void OnMenuCopyQueue(object sender, RoutedEventArgs e) => _vm?.QueueSelectedToOther(copy: true);
 
     private void OnMenuUseDest(object sender, RoutedEventArgs e)
     {

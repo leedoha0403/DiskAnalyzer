@@ -162,6 +162,12 @@
             <Button x:Name="MoveLeftButton" Content="←" Command="{Binding MoveLeftCommand}" Style="{StaticResource MoveButton}"
                     AutomationProperties.AutomationId="MoveLeft"
                     ToolTip="목적지에서 선택한 항목을 출발지 폴더로 옮길 대기열에 추가" />
+            <Button x:Name="CopyRightButton" Content="⧉→" Command="{Binding CopyRightCommand}" Style="{StaticResource MoveButton}"
+                    AutomationProperties.AutomationId="CopyRight"
+                    ToolTip="빠른 복사: 출발지에서 선택한 항목을 목적지 폴더로 복사할 대기열에 추가 (원본은 그대로 남습니다)" />
+            <Button x:Name="CopyLeftButton" Content="←⧉" Command="{Binding CopyLeftCommand}" Style="{StaticResource MoveButton}"
+                    AutomationProperties.AutomationId="CopyLeft"
+                    ToolTip="빠른 복사: 목적지에서 선택한 항목을 출발지 폴더로 복사할 대기열에 추가 (원본은 그대로 남습니다)" />
             <Button x:Name="SwapButton" Content="⇄" Command="{Binding SwapCommand}" Style="{StaticResource MoveButton}"
                     AutomationProperties.AutomationId="SwapPanes"
                     ToolTip="출발지와 목적지의 현재 경로를 서로 바꿉니다 (선택은 해제됩니다)" />

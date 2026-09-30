@@ -39,8 +39,8 @@ public partial class MainWindow
 
     private void OnOpenProcessCleaner(object sender, RoutedEventArgs e)
     {
-        var window = new ProcessCleanerWindow { Owner = this };
-        window.ShowDialog();
+        // 별도 창이 아니라 메인 창의 "프로세스" 탭으로 이동한다.
+        ViewModels.ProcessCleanerViewModel.Shared.OpenFullView();
     }
 
     private bool ExecuteShortcut(string commandId)
@@ -181,6 +181,9 @@ public partial class MainWindow
                 return Run(_vm.Cleanup.RefreshCommand);
             case LiveTab.QuickMove:
                 return false;   // 빠른 이동의 활성 패널 새로고침은 QuickMoveView 가 먼저 처리한다.
+            case LiveTab.ProcessCleaner:
+                _ = ViewModels.ProcessCleanerViewModel.Shared.RefreshAsync();
+                return true;
             case LiveTab.Folder:
             case LiveTab.Treemap:
             case LiveTab.Sunburst:
