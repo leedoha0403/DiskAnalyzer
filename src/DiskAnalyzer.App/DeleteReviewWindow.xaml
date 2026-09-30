@@ -151,6 +151,24 @@
             <StackPanel>
                 <TextBlock Text="삭제 완료" Style="{StaticResource H2}" />
                 <TextBlock Text="{Binding ResultText}" Style="{StaticResource Numeric}" FontSize="13" Margin="0,6,0,0" />
+
+                <!-- 못 지운 항목을 붙들고 있는 프로세스(Restart Manager). 종료하고 다시 삭제하면 된다. -->
+                <TextBlock Text="{Binding LockersText}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,10,0,0" />
+                <ItemsControl ItemsSource="{Binding Lockers}" Margin="0,6,0,0"
+                              AutomationProperties.AutomationId="LockerList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="0,0,0,4">
+                                <Button DockPanel.Dock="Right" Content="종료" Padding="12,3" Margin="8,0,0,0"
+                                        Click="OnKillLockerClick" Tag="{Binding}"
+                                        IsEnabled="{Binding CanKill}" ToolTip="{Binding Hint}" />
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" Style="{StaticResource Caption}"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            </DockPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </StackPanel>
         </Border>
 

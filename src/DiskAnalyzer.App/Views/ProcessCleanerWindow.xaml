@@ -69,6 +69,13 @@
         </DataTemplate>
 
         <Style x:Key="ProcessRowStyle" TargetType="ListViewItem" BasedOn="{StaticResource DataListItem}">
+            <Setter Property="ContextMenu">
+                <Setter.Value>
+                    <ContextMenu>
+                        <MenuItem Header="{Binding IgnoreMenuText}" Click="OnIgnoreMenuClick" />
+                    </ContextMenu>
+                </Setter.Value>
+            </Setter>
             <Style.Triggers>
                 <DataTrigger Binding="{Binding NeedsAttention}" Value="True">
                     <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
@@ -116,6 +123,12 @@
                     <CheckBox Content="선택 항목만 보기" IsChecked="{Binding ShowSelectedOnly}"
                               Margin="0,0,14,6" VerticalAlignment="Center"
                               AutomationProperties.AutomationId="ShowSelectedOnly" />
+                    <CheckBox Content="무시한 프로세스 숨기기" IsChecked="{Binding HideIgnored}"
+                              Margin="0,0,14,6" VerticalAlignment="Center"
+                              ToolTip="무시 목록에 올린 프로세스를 목록과 알림에서 뺍니다. 행을 우클릭하면 무시 목록에 추가하거나 해제합니다."
+                              AutomationProperties.AutomationId="HideIgnored" />
+                    <Button Content="무시 목록" Style="{StaticResource LinkButton}" Margin="0,0,14,6"
+                            Click="OnIgnoreListClick" AutomationProperties.AutomationId="IgnoreList" />
                     <Button Content="새로고침" Padding="14,5" Margin="0,0,0,6" Command="{Binding RefreshCommand}"
                             AutomationProperties.AutomationId="RefreshProcesses" />
                 </WrapPanel>

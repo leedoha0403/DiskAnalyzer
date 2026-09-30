@@ -1,0 +1,16 @@
+<UserControl x:Class="DiskAnalyzer.App.Views.ProcessBadge"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Loaded="OnLoaded">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </UserControl.Resources>
+
+    <!-- 상태바용 작은 알림: 응답 없음/멈춤 의심 프로세스가 있을 때만 보이고, 누르면 사이드바 패널을 펼친다. -->
+    <Button Style="{StaticResource LinkButton}" Padding="6,0" Click="OnClick"
+            Content="{Binding AttentionText}"
+            Visibility="{Binding HasAttention, Converter={StaticResource BoolToVis}}"
+            Foreground="{DynamicResource WarningBrush}"
+            ToolTip="응답 없음 또는 멈춤 의심 프로세스입니다. 누르면 프로세스 정리 패널을 엽니다."
+            AutomationProperties.AutomationId="ProcessBadge" />
+</UserControl>

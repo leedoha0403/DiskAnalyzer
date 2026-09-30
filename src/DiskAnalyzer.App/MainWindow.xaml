@@ -119,7 +119,8 @@
                     <TextBlock Text="{Binding StatusMode}" Style="{StaticResource Caption}"
                                Foreground="{DynamicResource AccentBrush}" Margin="0,0,16,0" />
                     <TextBlock Text="{Binding StatusCache}" Style="{StaticResource Caption}"
-                               Foreground="{DynamicResource WarningBrush}" />
+                               Foreground="{DynamicResource WarningBrush}" Margin="0,0,16,0" />
+                    <views:ProcessBadge />
                 </StackPanel>
                 <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource Caption}"
                            HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" MaxWidth="620" />
@@ -244,6 +245,9 @@
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="저장소" Style="{StaticResource H2}"
                                Margin="14,11,14,8" />
+                    <!-- 프로세스 정리: 드라이브 카드 아래 빈 자리에 붙는 작은 패널. 다른 탭·스캔과 함께 쓸 수 있다. -->
+                    <views:ProcessCleanerPanel DockPanel.Dock="Bottom" Margin="14,0,14,12"
+                                               AutomationProperties.AutomationId="ProcessCleanerPanel" />
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                   Padding="14,0,14,4">
                         <!-- ScrollViewer.Padding 은 뷰포트(와 클리핑 경계) 자체를 안쪽으로 미는 것이라

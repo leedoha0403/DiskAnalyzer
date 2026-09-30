@@ -39,6 +39,44 @@ public partial class DeleteReviewWindow : Window
     /// <summary>실행 후 실제로 사라진 노드. 호출자가 데이터 모델에서 즉시 제거한다(14).</summary>
     public DeletionSummary? Summary => _vm.Summary;
 
+    /// <summary>못 지운 파일을 잡은 프로세스를 종료한다. 권한이 모자라면 관리자 권한 재시도를 묻는다.</summary>
+    private async void OnKillLockerClick(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).Tag is not LockerRow row) return;
+
+        if (MessageBox.Show(this,
+                $"'{row.Name}' (PID {row.Pid}) 을(를) 종료할까요?\n\n저장하지 않은 작업이 있으면 사라질 수 있습니다.",
+                "프로세스 종료", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+            return;
+
+        row.IsBusy = true;
+        row.Status = "종료 중...";
+        try
+        {
+            var outcome = await Task.Run(() => ProcessCleanerService.TryKill(row.Pid));
+            if (outcome == KillOutcome.AccessDenied &&
+                MessageBox.Show(this, "지금 권한으로는 종료할 수 없습니다.\n\n관리자 권한으로 다시 시도할까요? UAC 승인 창이 뜹니다.",
+                    "관리자 권한으로 재시도", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes) == MessageBoxResult.Yes)
+            {
+                outcome = await Task.Run(() => ProcessCleanerService.TryKillElevated(row.Pid))
+                    ? KillOutcome.Success : KillOutcome.AccessDenied;
+            }
+
+            row.IsDone = outcome is KillOutcome.Success or KillOutcome.NotFound;
+            row.Status = outcome switch
+            {
+                KillOutcome.Success => "종료됨 - 다시 삭제하세요",
+                KillOutcome.NotFound => "이미 종료됨",
+                KillOutcome.AccessDenied => "권한 부족",
+                _ => "종료하지 못했습니다",
+            };
+        }
+        finally
+        {
+            row.IsBusy = false;
+        }
+    }
+
     private void OnCancel(object sender, RoutedEventArgs e) => CancelOrClose();
 
     /// <summary>

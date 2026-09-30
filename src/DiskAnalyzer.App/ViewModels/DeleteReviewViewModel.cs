@@ -256,6 +256,39 @@ public sealed class DeleteReviewViewModel : ObservableObject
     private string _resultText = string.Empty;
     public string ResultText { get => _resultText; private set => Set(ref _resultText, value); }
 
+    /// <summary>사용 중이라 못 지운 항목을 붙들고 있는 프로세스 후보(Restart Manager 로 조회).</summary>
+    public ObservableCollection<LockerRow> Lockers { get; } = new();
+    public bool HasLockers => Lockers.Count > 0;
+
+    private string _lockersText = string.Empty;
+    public string LockersText { get => _lockersText; private set => Set(ref _lockersText, value); }
+
+    /// <summary>
+    /// 지우지 못한 항목(사용 중·실패)의 경로로 그 파일을 잡은 프로세스를 찾아 목록에 올린다.
+    /// 조회는 파일 시스템을 훑을 수 있어 백그라운드에서 하고, 결과 화면은 먼저 보여준다.
+    /// </summary>
+    private async Task FindLockersAsync(DeletionSummary summary)
+    {
+        var paths = summary.Outcomes
+            .Where(o => o.Kind is DeletionOutcomeKind.InUse or DeletionOutcomeKind.Failed)
+            .Select(o => o.Request.Path)
+            .Take(50)
+            .ToList();
+        if (paths.Count == 0) return;
+
+        LockersText = "지우지 못한 항목을 붙들고 있는 프로세스를 찾는 중...";
+        var found = await Task.Run(() => FileLockFinder.Find(paths)).ConfigureAwait(true);
+
+        Lockers.Clear();
+        foreach (var p in found.OrderBy(p => ProcessCleanerService.IsProtected(p.Name)).ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+            Lockers.Add(new LockerRow(p));
+
+        Raise(nameof(HasLockers));
+        LockersText = Lockers.Count > 0
+            ? $"지우지 못한 항목을 붙들고 있는 프로세스 {Lockers.Count}개 - 종료한 뒤 다시 삭제해 보세요."
+            : string.Empty;
+    }
+
     private bool _showFailuresOnly;
     public bool ShowFailuresOnly
     {
@@ -298,6 +331,7 @@ public sealed class DeleteReviewViewModel : ObservableObject
         Summary = summary;
         ApplyOutcomes(summary);
         Stage = DeleteReviewStage.Result;
+        _ = FindLockersAsync(summary);
         return summary;
     }
 

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows.Input;
+using DiskAnalyzer.Core.Models;
 using DiskAnalyzer.Core.Services;
 
 namespace DiskAnalyzer.App.ViewModels;
@@ -67,9 +68,27 @@ public sealed class ProcessRowViewModel : ObservableObject
     public string Name => Info.Name;
     public string WindowTitle => Info.WindowTitle;
     public bool Responding => Info.Responding;
-    public bool NeedsAttention => Info.NeedsAttention;
+    private bool _ignored;
+
+    /// <summary>무시 목록에 있는 이름이면 응답 없음/멈춤 의심이어도 "확인 필요"로 치지 않는다.</summary>
+    public bool IsIgnored => _ignored;
+
+    public void SetIgnored(bool ignored)
+    {
+        if (_ignored == ignored) return;
+        _ignored = ignored;
+        Raise(nameof(IsIgnored));
+        Raise(nameof(NeedsAttention));
+        Raise(nameof(RespondingText));
+        Raise(nameof(IgnoreMenuText));
+    }
+
+    public string IgnoreMenuText => _ignored ? $"'{Name}' 무시 해제" : $"'{Name}' 무시 목록에 추가";
+
+    public bool NeedsAttention => Info.NeedsAttention && !_ignored;
     public string RootApp => Info.RootApp;
-    public string RespondingText => !Responding ? "응답 없음"
+    public string RespondingText => _ignored && Info.NeedsAttention ? "무시됨"
+        : !Responding ? "응답 없음"
         : Info.Suspicious ? $"멈춤 의심 ({Math.Max(1, (int)(Info.IdleSeconds / 60))}분)"
         : "정상";
     public long MemoryBytes => Info.MemoryBytes;
@@ -143,9 +162,111 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         get => _showAll;
         set
         {
-            if (Set(ref _showAll, value)) ApplyView();
+            if (Set(ref _showAll, value)) { ApplyView(); PersistOptions(); }
         }
     }
+
+    private bool _hideIgnored = true;
+
+    /// <summary>무시 목록에 올린 프로세스를 목록에서 감춘다(검색할 때는 그래도 찾을 수 있다).</summary>
+    public bool HideIgnored
+    {
+        get => _hideIgnored;
+        set
+        {
+            if (Set(ref _hideIgnored, value)) { ApplyView(); PersistOptions(); }
+        }
+    }
+
+    private static bool IsIgnoredName(string name) => ProcessIgnoreList.Contains(name);
+
+    /// <summary>응답 없음/멈춤 의심이면서 무시 목록에 없는 것 - 기본 목록·배지·"의심 선택"의 기준.</summary>
+    private static bool Attn(ProcessInfo p) => p.NeedsAttention && !IsIgnoredName(p.Name);
+
+    private int _attentionCount;
+
+    /// <summary>지금 확인이 필요한(무시·시스템 보호 제외) 프로세스 수 - 상태바 배지가 쓴다.</summary>
+    public int AttentionCount
+    {
+        get => _attentionCount;
+        private set
+        {
+            if (Set(ref _attentionCount, value))
+            {
+                Raise(nameof(HasAttention));
+                Raise(nameof(AttentionText));
+            }
+        }
+    }
+
+    public bool HasAttention => _attentionCount > 0;
+    public string AttentionText => $"⚠ 프로세스 {_attentionCount}개 확인 필요";
+
+    /// <summary>앱 전체가 함께 쓰는 하나. 사이드바 패널과 상태바 배지가 같은 조회 결과를 본다.</summary>
+    public static ProcessCleanerViewModel Shared { get; } = new();
+
+    /// <summary>배지를 눌렀을 때 패널이 스스로 펼치라는 신호.</summary>
+    public event Action? RevealRequested;
+    public void RequestReveal() => RevealRequested?.Invoke();
+
+    private System.Windows.Threading.DispatcherTimer? _monitor;
+    private int _monitorTick;
+
+    /// <summary>패널이 펼쳐져 보이는 동안만 true - 그때는 2초마다, 아니면 약 16초마다 조용히 갱신한다.</summary>
+    public bool FastPolling { get; set; }
+
+    /// <summary>
+    /// 창이 없어도 상태바 배지가 살아 있으려면 조회가 계속 돌아야 한다("멈춤 의심"은 CPU·I/O 변화가 없는 시간을
+    /// 관찰해야 판정되므로 패널을 접어 둬도 계속 재야 한다). 여러 번 불러도 한 번만 시작한다.
+    /// </summary>
+    public void StartMonitor()
+    {
+        if (_monitor != null) return;
+        _monitor = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _monitor.Tick += async (_, _) =>
+        {
+            _monitorTick++;
+            if (!FastPolling && _monitorTick % 8 != 0) return;
+            if (!IsLoading) await RefreshAsync();
+        };
+        _monitor.Start();
+        _ = RefreshAsync();
+    }
+
+    public void Dispose()
+    {
+        ProcessIgnoreList.Changed -= OnIgnoreChanged;
+        _monitor?.Stop();
+    }
+
+    private void OnIgnoreChanged()
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher == null) return;
+        dispatcher.BeginInvoke(new Action(() =>
+        {
+            ApplyView();
+            UpdateAttentionCount();
+        }));
+    }
+
+    private void UpdateAttentionCount()
+        => AttentionCount = _snapshot.Count(p => Attn(p) && !ProcessCleanerService.IsProtected(p.Name));
+
+    private bool _loadingOptions;
+
+    private void PersistOptions()
+    {
+        if (_loadingOptions) return;
+        var s = UiSettings.Load();
+        s.ProcessTreeMode = _treeMode;
+        s.ProcessShowAll = _showAll;
+        s.ProcessHideIgnored = _hideIgnored;
+        s.Save();
+    }
+
+    public bool IgnoreName(string name) => ProcessIgnoreList.Add(name);
+    public bool UnignoreName(string name) => ProcessIgnoreList.Remove(name);
 
     public bool ShowSelectedOnly
     {
@@ -165,7 +286,7 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         get => _treeMode;
         set
         {
-            if (Set(ref _treeMode, value)) ApplyView();
+            if (Set(ref _treeMode, value)) { ApplyView(); PersistOptions(); }
         }
     }
 
@@ -179,7 +300,7 @@ public sealed class ProcessCleanerViewModel : ObservableObject
     public int SelectSuspicious()
     {
         int n = 0;
-        foreach (var r in _snapshot.Where(p => p.Suspicious && !ProcessCleanerService.IsProtected(p.Name)))
+        foreach (var r in _snapshot.Where(p => p.Suspicious && !IsIgnoredName(p.Name) && !ProcessCleanerService.IsProtected(p.Name)))
         {
             _selectedPids.Add(r.Pid);
             n++;
@@ -248,6 +369,15 @@ public sealed class ProcessCleanerViewModel : ObservableObject
     public ProcessCleanerViewModel()
     {
         RefreshCommand = new RelayCommand(() => _ = RefreshAsync(), () => !IsLoading);
+
+        _loadingOptions = true;
+        var s = UiSettings.Load();
+        _treeMode = s.ProcessTreeMode;
+        _showAll = s.ProcessShowAll;
+        _hideIgnored = s.ProcessHideIgnored;
+        _loadingOptions = false;
+
+        ProcessIgnoreList.Changed += OnIgnoreChanged;
     }
 
     /// <summary>
@@ -291,6 +421,7 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         {
             _snapshot = await Task.Run(() => ProcessCleanerService.ListProcesses());
             ApplyView();   // Rows 를 지우지 않는다 - 같은 Pid 줄은 재사용해서 선택 상태를 그대로 둔다
+            UpdateAttentionCount();
         }
         finally
         {
@@ -323,9 +454,10 @@ public sealed class ProcessCleanerViewModel : ObservableObject
                 p.Ancestors.Contains(term, StringComparison.OrdinalIgnoreCase) ||
                 p.Pid.ToString().Contains(term, StringComparison.Ordinal));
         }
-        else if (!ShowAll)
+        else
         {
-            query = query.Where(p => p.NeedsAttention);
+            if (!ShowAll) query = query.Where(Attn);
+            if (HideIgnored) query = query.Where(p => !IsIgnoredName(p.Name));
         }
 
         if (ShowSelectedOnly)
@@ -354,6 +486,7 @@ public sealed class ProcessCleanerViewModel : ObservableObject
                 row.UpdateInfo(info);
             }
 
+            row.SetIgnored(IsIgnoredName(info.Name));
             row.SetTree(TreeMode, depth, count, expanded);
             Rows.Add(row);
         }
@@ -375,7 +508,7 @@ public sealed class ProcessCleanerViewModel : ObservableObject
             {
                 "Pid" => p => p.Pid,
                 "Name" => p => p.Name,
-                "Responding" => p => p.NeedsAttention,
+                "Responding" => p => Attn(p),
                 "Cpu" => p => p.CpuPercent,
                 "Disk" => p => p.DiskBytesPerSecond,
                 _ => p => p.MemoryBytes,

@@ -24,7 +24,7 @@ public partial class ProcessCleanerWindow : Window
 
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _refreshTimer.Tick += async (_, _) => { if (!_vm.IsLoading) await _vm.RefreshAsync(); };
-        Closed += (_, _) => _refreshTimer.Stop();
+        Closed += (_, _) => { _refreshTimer.Stop(); _vm.Dispose(); };
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -48,6 +48,14 @@ public partial class ProcessCleanerWindow : Window
         if (((FrameworkElement)sender).Tag is ProcessRowViewModel row) _vm.ToggleCollapse(row);
         e.Handled = true;
     }
+
+    private void OnIgnoreMenuClick(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is not ProcessRowViewModel row) return;
+        if (row.IsIgnored) _vm.UnignoreName(row.Name); else _vm.IgnoreName(row.Name);
+    }
+
+    private void OnIgnoreListClick(object sender, RoutedEventArgs e) => ProcessIgnoreMenu.Show((FrameworkElement)sender);
 
     private void OnSelectSuspiciousClick(object sender, RoutedEventArgs e)
     {

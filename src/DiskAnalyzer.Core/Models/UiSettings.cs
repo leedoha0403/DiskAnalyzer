@@ -43,6 +43,21 @@ public sealed class UiSettings
     /// </summary>
     public bool? Animations { get; set; }
 
+    /// <summary>사이드바 프로세스 정리 패널이 펼쳐져 있는가.</summary>
+    public bool ProcessPanelExpanded { get; set; } = true;
+
+    /// <summary>프로세스 정리 패널 목록 높이(px). 0 이면 기본값.</summary>
+    public double ProcessPanelListHeight { get; set; }
+
+    /// <summary>프로세스 정리기 보기 옵션: 트리로 보기.</summary>
+    public bool ProcessTreeMode { get; set; } = true;
+
+    /// <summary>프로세스 정리기 보기 옵션: 전체 프로세스 보기(끄면 응답 없음/멈춤 의심만).</summary>
+    public bool ProcessShowAll { get; set; }
+
+    /// <summary>프로세스 정리기 보기 옵션: 무시 목록에 올린 프로세스를 목록에서 숨긴다.</summary>
+    public bool ProcessHideIgnored { get; set; } = true;
+
     /// <summary>
     /// 환경 변수 DISKANALYZER_UI_SETTINGS 가 있으면 그 경로를 쓴다 —
     /// 자동 검증 도구가 사용자의 실제 설정을 건드리지 않게 하는 통로다(quickmove.json 과 같은 규칙).
