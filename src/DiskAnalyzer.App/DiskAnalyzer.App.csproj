@@ -16,10 +16,10 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>DiskAnalyzer</AssemblyName>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>0.1.6</Version>
-    <AssemblyVersion>0.1.6.0</AssemblyVersion>
-    <FileVersion>0.1.6.0</FileVersion>
-    <InformationalVersion>0.1.6-internal</InformationalVersion>
+    <Version>0.1.7</Version>
+    <AssemblyVersion>0.1.7.0</AssemblyVersion>
+    <FileVersion>0.1.7.0</FileVersion>
+    <InformationalVersion>0.1.7-internal</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
