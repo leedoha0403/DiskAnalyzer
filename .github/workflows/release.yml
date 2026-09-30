@@ -1,0 +1,41 @@
+name: Release
+
+# Pushing a tag like v0.1.6 builds the Windows package and publishes a GitHub Release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          ./tools/publish-release.ps1 -Version $version
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v')
+          $dir = "dist/release"
+          # Use release-notes/<tag>.md as the page body when present, otherwise let GitHub generate notes.
+          $notes = if (Test-Path "release-notes/$tag.md") { @('--notes-file', "release-notes/$tag.md") } else { @('--generate-notes') }
+          gh release create $tag `
+            "$dir/DiskAnalyzer-v$version-win-x64.zip" `
+            "$dir/DiskAnalyzer.exe" `
+            "$dir/SHA256SUMS.txt" `
+            --title $tag @notes
