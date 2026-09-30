@@ -35,13 +35,43 @@ public sealed class ProcessRowViewModel : ObservableObject
         Raise(nameof(CpuPercent));
         Raise(nameof(CpuText));
         Raise(nameof(DiskText));
+        Raise(nameof(RootApp));
+        Raise(nameof(NeedsAttention));
     }
+
+    private int _depth;
+    private int _descendantCount;
+    private bool _expanded = true;
+    private bool _treeMode;
+
+    /// <summary>트리 보기에서 이 줄의 들여쓰기·접기 상태 - ApplyView 가 줄을 배치할 때마다 갱신한다.</summary>
+    public void SetTree(bool treeMode, int depth, int descendantCount, bool expanded)
+    {
+        _treeMode = treeMode;
+        _depth = depth;
+        _descendantCount = descendantCount;
+        _expanded = expanded;
+        Raise(nameof(IndentMargin));
+        Raise(nameof(ToggleGlyph));
+        Raise(nameof(ToggleVisibility));
+        Raise(nameof(DisplayName));
+    }
+
+    public System.Windows.Thickness IndentMargin => new(_treeMode ? _depth * 16 : 0, 0, 0, 0);
+    public string ToggleGlyph => _descendantCount == 0 ? "" : _expanded ? "\u25BE" : "\u25B8";
+    public System.Windows.Visibility ToggleVisibility => !_treeMode ? System.Windows.Visibility.Collapsed
+        : _descendantCount == 0 ? System.Windows.Visibility.Hidden : System.Windows.Visibility.Visible;
+    public string DisplayName => _treeMode && _descendantCount > 0 ? $"{Name} ({_descendantCount})" : Name;
 
     public int Pid => Info.Pid;
     public string Name => Info.Name;
     public string WindowTitle => Info.WindowTitle;
     public bool Responding => Info.Responding;
-    public string RespondingText => Responding ? "정상" : "응답 없음";
+    public bool NeedsAttention => Info.NeedsAttention;
+    public string RootApp => Info.RootApp;
+    public string RespondingText => !Responding ? "응답 없음"
+        : Info.Suspicious ? $"멈춤 의심 ({Math.Max(1, (int)(Info.IdleSeconds / 60))}분)"
+        : "정상";
     public long MemoryBytes => Info.MemoryBytes;
     public string MemoryText => $"{Info.MemoryBytes / 1024.0 / 1024.0:N0} MB";
     public double CpuPercent => Info.CpuPercent;
@@ -113,7 +143,7 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         get => _showAll;
         set
         {
-            if (Set(ref _showAll, value)) _ = RefreshAsync();
+            if (Set(ref _showAll, value)) ApplyView();
         }
     }
 
@@ -124,6 +154,39 @@ public sealed class ProcessCleanerViewModel : ObservableObject
         {
             if (Set(ref _showSelectedOnly, value)) ApplyView();
         }
+    }
+
+    private bool _treeMode = true;
+    private readonly HashSet<int> _collapsed = new();
+
+    /// <summary>작업 관리자처럼 부모 아래로 자식을 묶어 보여준다(Claude ▸ pwsh ▸ conhost).</summary>
+    public bool TreeMode
+    {
+        get => _treeMode;
+        set
+        {
+            if (Set(ref _treeMode, value)) ApplyView();
+        }
+    }
+
+    public void ToggleCollapse(ProcessRowViewModel row)
+    {
+        if (!_collapsed.Remove(row.Pid)) _collapsed.Add(row.Pid);
+        ApplyView();
+    }
+
+    /// <summary>멈춤 의심 프로세스를 전부 선택한다(창이 없어 응답 없음으로는 안 잡히는 고아·정체 프로세스 일괄 정리용).</summary>
+    public int SelectSuspicious()
+    {
+        int n = 0;
+        foreach (var r in _snapshot.Where(p => p.Suspicious && !ProcessCleanerService.IsProtected(p.Name)))
+        {
+            _selectedPids.Add(r.Pid);
+            n++;
+        }
+        foreach (var row in Rows) row.IsSelected = _selectedPids.Contains(row.Pid);
+        RaiseSelectionChanged();
+        return n;
     }
 
     public bool IsLoading
@@ -224,10 +287,9 @@ public sealed class ProcessCleanerViewModel : ObservableObject
     {
         IsLoading = true;
         if (Rows.Count == 0) IsInitialLoading = true;
-        bool notRespondingOnly = !ShowAll;
         try
         {
-            _snapshot = await Task.Run(() => ProcessCleanerService.ListProcesses(notRespondingOnly));
+            _snapshot = await Task.Run(() => ProcessCleanerService.ListProcesses());
             ApplyView();   // Rows 를 지우지 않는다 - 같은 Pid 줄은 재사용해서 선택 상태를 그대로 둔다
         }
         finally
@@ -249,61 +311,120 @@ public sealed class ProcessCleanerViewModel : ObservableObject
     {
         IEnumerable<ProcessInfo> query = _snapshot;
 
+        // 검색어가 있으면 "응답 없음/멈춤 의심만" 필터는 무시하고 전체에서 찾는다 - 창 없는 자식(pwsh 등)이
+        // 기본 필터에 가려 "claude" 로 검색해도 0건이던 문제.
         string term = SearchText.Trim();
         if (term.Length > 0)
         {
             query = query.Where(p =>
                 p.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
                 p.WindowTitle.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                p.RootApp.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                p.Ancestors.Contains(term, StringComparison.OrdinalIgnoreCase) ||
                 p.Pid.ToString().Contains(term, StringComparison.Ordinal));
+        }
+        else if (!ShowAll)
+        {
+            query = query.Where(p => p.NeedsAttention);
         }
 
         if (ShowSelectedOnly)
             query = query.Where(p => _selectedPids.Contains(p.Pid));
 
+        var visible = query.ToList();
+
+        var placed = new List<(ProcessInfo Info, int Depth, int Count, bool Expanded)>();
+        if (TreeMode)
+            PlaceTree(visible, term.Length > 0, placed);
+        else
+            foreach (var info in Sort(visible)) placed.Add((info, 0, 0, true));
+
+        var existing = Rows.ToDictionary(r => r.Pid);
+
+        Rows.Clear();
+        foreach (var (info, depth, count, expanded) in placed)
+        {
+            if (!existing.TryGetValue(info.Pid, out var row))
+            {
+                row = new ProcessRowViewModel(info);
+                SubscribeRow(row);
+            }
+            else
+            {
+                row.UpdateInfo(info);
+            }
+
+            row.SetTree(TreeMode, depth, count, expanded);
+            Rows.Add(row);
+        }
+
+        Message = placed.Count > 0 ? string.Empty
+            : ShowSelectedOnly ? "선택한 프로세스가 없습니다."
+            : term.Length > 0 ? "검색 결과가 없습니다."
+            : !ShowAll ? "응답 없거나 멈춤 의심되는 프로세스가 없습니다."
+            : "표시할 프로세스가 없습니다.";
+
+        RaiseSelectionChanged();
+    }
+
+    private IEnumerable<ProcessInfo> Sort(IEnumerable<ProcessInfo> items)
+    {
         if (_sort is { } s)
         {
             Func<ProcessInfo, object> keySelector = s.Key switch
             {
                 "Pid" => p => p.Pid,
                 "Name" => p => p.Name,
-                "Responding" => p => p.Responding,
+                "Responding" => p => p.NeedsAttention,
                 "Cpu" => p => p.CpuPercent,
                 "Disk" => p => p.DiskBytesPerSecond,
                 _ => p => p.MemoryBytes,
             };
-            query = s.Descending ? query.OrderByDescending(keySelector) : query.OrderBy(keySelector);
+            items = s.Descending ? items.OrderByDescending(keySelector) : items.OrderBy(keySelector);
         }
 
         // 선택도 종료도 안 되는 보호된(흐린) 프로세스가 목록 중간에 섞이면 헷갈린다 - 정렬 기준과 무관하게 맨 아래로 내린다.
-        query = query.OrderBy(p => ProcessCleanerService.IsProtected(p.Name));
+        return items.OrderBy(p => ProcessCleanerService.IsProtected(p.Name));
+    }
 
-        var existing = Rows.ToDictionary(r => r.Pid);
-        var ordered = query.ToList();
+    /// <summary>
+    /// 보이는 프로세스들을 부모 아래로 묶어 배치한다. 부모가 필터에 걸려 안 보이면 보이는 가장 가까운 조상 밑으로,
+    /// 그런 조상도 없으면 최상위로 올린다(그래서 기본 필터에서도 자식이 사라지지 않는다).
+    /// </summary>
+    private void PlaceTree(List<ProcessInfo> visible, bool expandAll,
+        List<(ProcessInfo Info, int Depth, int Count, bool Expanded)> output)
+    {
+        var all = _snapshot.ToDictionary(p => p.Pid);
+        var visiblePids = visible.Select(p => p.Pid).ToHashSet();
 
-        Rows.Clear();
-        foreach (var info in ordered)
+        var children = new Dictionary<int, List<ProcessInfo>>();
+        var roots = new List<ProcessInfo>();
+        foreach (var p in visible)
         {
-            if (existing.TryGetValue(info.Pid, out var row))
-            {
-                row.UpdateInfo(info);
-                Rows.Add(row);
-            }
-            else
-            {
-                var newRow = new ProcessRowViewModel(info);
-                SubscribeRow(newRow);
-                Rows.Add(newRow);
-            }
+            int up = p.ParentPid;
+            for (int guard = 0; up != 0 && !visiblePids.Contains(up) && guard < 32; guard++)
+                up = all.TryGetValue(up, out var anc) ? anc.ParentPid : 0;
+
+            if (up == 0 || up == p.Pid || !visiblePids.Contains(up)) { roots.Add(p); continue; }
+
+            if (!children.TryGetValue(up, out var list)) children[up] = list = new List<ProcessInfo>();
+            list.Add(p);
         }
 
-        Message = ordered.Count > 0 ? string.Empty
-            : ShowSelectedOnly ? "선택한 프로세스가 없습니다."
-            : term.Length > 0 ? "검색 결과가 없습니다."
-            : !ShowAll ? "응답 없는 프로세스가 없습니다."
-            : "표시할 프로세스가 없습니다.";
+        int CountDescendants(int pid, int depth = 0)
+            => depth > 40 || !children.TryGetValue(pid, out var kids) ? 0
+                : kids.Count + kids.Sum(k => CountDescendants(k.Pid, depth + 1));
 
-        RaiseSelectionChanged();
+        void Emit(ProcessInfo p, int depth)
+        {
+            int count = CountDescendants(p.Pid);
+            bool expanded = expandAll || !_collapsed.Contains(p.Pid);
+            output.Add((p, depth, count, expanded));
+            if (!expanded || depth > 40 || !children.TryGetValue(p.Pid, out var kids)) return;
+            foreach (var k in Sort(kids)) Emit(k, depth + 1);
+        }
+
+        foreach (var r in Sort(roots)) Emit(r, 0);
     }
 
     private void RemoveFromSnapshot(int pid) => _snapshot = _snapshot.Where(p => p.Pid != pid).ToList();

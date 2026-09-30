@@ -43,6 +43,20 @@ public partial class ProcessCleanerWindow : Window
         foreach (var row in _vm.Rows.Where(r => !r.IsProtected)) row.IsSelected = true;
     }
 
+    private void OnToggleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (((FrameworkElement)sender).Tag is ProcessRowViewModel row) _vm.ToggleCollapse(row);
+        e.Handled = true;
+    }
+
+    private void OnSelectSuspiciousClick(object sender, RoutedEventArgs e)
+    {
+        int n = _vm.SelectSuspicious();
+        _vm.Message = n == 0
+            ? "멈춤 의심 프로세스가 없습니다. (창이 없고 5분 넘게 CPU·디스크 변화가 없어야 표시됩니다 - 창을 연 지 얼마 안 됐다면 잠시 뒤 다시 눌러보세요.)"
+            : $"멈춤 의심 {n}개를 선택했습니다. 목록을 확인한 뒤 [선택 종료]를 누르세요.";
+    }
+
     private void OnDeselectAllClick(object sender, RoutedEventArgs e)
     {
         foreach (var row in _vm.Rows) row.IsSelected = false;
