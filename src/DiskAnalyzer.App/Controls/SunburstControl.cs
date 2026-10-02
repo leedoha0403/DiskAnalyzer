@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using DiskAnalyzer.App.Keymaps;
 using DiskAnalyzer.Core.Analysis;
 using DiskAnalyzer.Core.Keymaps;
@@ -100,6 +101,12 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         // 회색조 안티에일리어싱은 색을 만들지 않는다.
         TextOptions.SetTextRenderingMode(this, TextRenderingMode.Grayscale);
         TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
+
+        // 선버스트 탭을 열 때마다 안쪽부터 다시 열린다.
+        IsVisibleChanged += (_, e) =>
+        {
+            if (e.NewValue is true) PlayIntro();
+        };
     }
 
     // ---------------------------------------------------------------- 색
@@ -145,6 +152,7 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
     public void SetSource(NodeStore? store, int dirId, SunburstOptions? options = null)
     {
         var previous = _layout;
+        bool wasFlat = _store == null; // 스캔 중의 한 겹 그림이었다.
 
         _store = store;
         _layout = SunburstLayout.Build(store, dirId, options);
@@ -164,14 +172,24 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         _fillFading = null;
 
         Rebuild();
-        BeginZoom(previous);
+
+        // 다른 폴더가 열리는 것이면(하위로 들어가기 · 상위로 나오기 · 스캔이 끝나 겹이 늘어날 때 · 처음 나타날 때)
+        // 열리는 연출을 건다. 같은 폴더를 다시 그리는 것(새로고침)에는 걸지 않는다.
+        bool opens = previous.IsEmpty || wasFlat || previous.DirectoryId != _layout.DirectoryId;
+        bool intro = opens && IntroStyle != SunburstIntroStyle.Basic && Motion.Enabled;
+
+        // 연출이 크기를 이미 키우므로 줌까지 겹치면 이중으로 출렁인다. 기본형일 때만 줌이 방향을 말해 준다.
+        if (intro) Motion.Settle(this, TransitionProperty, 1d);
+        else BeginZoom(previous);
         // 줌(크기)과 각도 보간을 같이 건다 — 새로 들어온 조각은 제 자리에서 폭 0 으로 열려
         // "링이 자라난다"는 느낌이 스캔 중뿐 아니라 폴더를 드나들 때도 보인다.
         BeginMorph(previous);
+
+        if (opens) PlayIntro();
     }
 
     /// <summary>
-    /// 스캔 중: <see cref="NodeStore"/> 는 Aggregator 스레드가 쓰고 있으므로 직접 타고 내려가면 안 된다.
+    /// 스캔 중:<see cref="NodeStore"/> 는 Aggregator 스레드가 쓰고 있으므로 직접 타고 내려가면 안 된다.
     /// 게시된 현재 폴더 스냅샷만으로 한 겹을 그린다 — 링이 자라는 것이 그대로 보인다.
     /// </summary>
     public void SetFlatSource(IReadOnlyList<EntryRow> rows, string name)
@@ -432,6 +450,141 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         nameof(Morph), typeof(double), typeof(SunburstControl),
         new FrameworkPropertyMetadata(1d, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    /// <summary>열리는 연출의 진행. 0 = 시작, 1 = 다 열렸다. 겹마다 시차를 두고 안쪽부터 펼쳐진다.</summary>
+    private static readonly DependencyProperty IntroProperty = DependencyProperty.Register(
+        nameof(Intro), typeof(double), typeof(SunburstControl),
+        new FrameworkPropertyMetadata(1d, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    private double Intro => (double)GetValue(IntroProperty);
+
+    /// <summary>번짐: 겹 하나의 알파가 올라오는 데 걸리는 시간(ms).</summary>
+    private const double RippleAlphaMs = 252d;
+
+    /// <summary>번짐: 모든 겹이 같이 퍼지는 데 걸리는 시간(ms). 알파보다 짧다.</summary>
+    private const double RippleGrowMs = 228d;
+
+    /// <summary>번짐: 겹 사이 시차의 기준(ms).</summary>
+    private const double RippleStaggerMs = 48d;
+
+    /// <summary>
+    /// 번짐: 겹 <paramref name="ring"/> 이 켜지기 시작하는 시각(ms). 안쪽은 또렷하게 벌어지고
+    /// 바깥으로 갈수록 간격이 줄어든다 — 깊이 들어가도 마지막 호가 한참 뒤에 뜨지 않는다.
+    /// 시간을 전체에 나눠 쓰지 않고 <b>겹당 고정 간격</b>으로 쓰는 이유: 전체를 고정하면
+    /// 겹이 적은 깊은 폴더에서 다음 호까지의 간격이 오히려 벌어져 느려 보인다.
+    /// </summary>
+    private static double RippleOffsetMs(int ring) => RippleStaggerMs * Math.Pow(Math.Min(ring, 8), 0.8d);
+
+    private double RippleTotalMs()
+    {
+        int rings = Math.Min(Math.Max(_ringCount, 1), 8);
+        return RippleAlphaMs + RippleOffsetMs(rings - 1);
+    }
+
+    /// <summary>처음 크기. 1 이면 커지지 않는다.</summary>
+    private const double IntroFromScale = 0.55d;
+
+    private Brush[]? _introFill;
+
+    /// <summary>겹마다 곡선을 따로 입히므로 전체 진행은 등속이어야 한다(Power 1 = 선형).</summary>
+    private static readonly IEasingFunction IntroClock = MakeLinear();
+
+    private static IEasingFunction MakeLinear()
+    {
+        var e = new PowerEase { Power = 1d, EasingMode = EasingMode.EaseIn };
+        e.Freeze();
+        return e;
+    }
+
+    /// <summary>
+    /// 처음 열릴 때의 연출. 가운데에서 모든 겹이 동시에 <b>퍼지고</b>(크기),
+    /// 알파는 안쪽 겹부터 차례로, 퍼짐보다 느리게 옅다가 짙어진다. 각도는 돌리지 않는다(돌리는 쪽은 <see cref="SunburstIntroStyle.Fancy"/>).
+    ///
+    /// <para>알파는 <c>PushOpacity</c> 가 아니라 <b>조각 브러시의 알파</b>로 건다 — 중간 버퍼 층이 끝나는
+    /// 프레임에 경계가 반짝이는 문제를 줌에서 이미 겪었다(<see cref="PushTransition"/>).</para>
+    /// </summary>
+    public void PlayIntro()
+    {
+        if (IntroStyle == SunburstIntroStyle.Basic || !Motion.Enabled || _layout.IsEmpty ||
+            _layout.Segments.Count > ZoomSegmentLimit)
+        {
+            Motion.Settle(this, IntroProperty, 1d);
+            return;
+        }
+
+        double ms = IntroStyle == SunburstIntroStyle.Fancy
+            ? FancyRingMs + (FancyRings() - 1) * FancyStaggerMs
+            : RippleTotalMs();
+
+        Motion.From(this, IntroProperty, 0d, 1d, new Duration(TimeSpan.FromMilliseconds(ms)), IntroClock);
+    }
+
+    /// <summary>열리는 연출의 종류. 설정의 "선버스트 연출" 이 정한다.</summary>
+    public SunburstIntroStyle IntroStyle { get; set; } = SunburstIntroStyle.Basic;
+
+    // ---- 화려함: 안쪽 겹부터 시차를 두고 12시에서 시계 방향으로 펼쳐지며 커지고, 알파가 짙어진다.
+
+    /// <summary>겹 하나가 다 열리는 데 걸리는 시간(ms).</summary>
+    private const double FancyRingMs = 228d;
+
+    /// <summary>다음 겹이 이만큼(ms) 늦게 시작한다.</summary>
+    private const double FancyStaggerMs = 45d;
+
+    private int FancyRings()
+    {
+        int rings = 1;
+        foreach (var s in _layout.Segments) rings = Math.Max(rings, s.Ring + 1);
+        return Math.Min(rings, 8);
+    }
+
+    /// <summary>화려함: 겹 <paramref name="ring"/> 의 시간 진행(0~1). 등속이다 — 알파가 이것을 따라간다.</summary>
+    private double FancyLocal(int ring)
+    {
+        int rings = FancyRings();
+        double total = FancyRingMs + (rings - 1) * FancyStaggerMs;
+        return Math.Clamp((Intro * total - Math.Min(ring, rings - 1) * FancyStaggerMs) / FancyRingMs, 0d, 1d);
+    }
+
+    /// <summary>화려함: 펼쳐진 정도(0~1). 시작은 빠르고 끝은 부드럽다.</summary>
+    private static double FancyOpen(double local)
+    {
+        double inv = 1d - local;
+        return 1d - inv * inv * inv;
+    }
+
+    /// <summary>
+    /// 화려함: 조각의 알파. <b>펼쳐지는 길과 연동한다</b> — 알파를 펼침(빠르게 나가 부드럽게 멈추는 곡선)에
+    /// 그대로 얹으면 조각이 아직 도착하기 전에 이미 100% 로 짙어져서, 맨 끝에 도착하는 호가 완전한 색으로
+    /// 날아오는 꼴이 된다. 그래서 시간(등속)을 따라 올리고, 시계 방향으로 <b>멀리 가야 하는 조각일수록
+    /// 늦게</b> 올리되 모든 조각이 도착하는 순간에 정확히 100% 가 되게 한다.
+    /// </summary>
+    private static double FancyAlpha(double local, double finalFraction)
+    {
+        const double Lag = 0.5d;
+        double x = Math.Clamp((local - Lag * finalFraction) / (1d - Lag * finalFraction), 0d, 1d);
+        return x * x * (3d - 2d * x);
+    }
+
+    /// <summary>모든 겹이 동시에 퍼지는 진행(0~1). 빠르게 나가 부드럽게 멈춘다.</summary>
+    private double IntroGrow()
+    {
+        double x = Math.Clamp(Intro * RippleTotalMs() / RippleGrowMs, 0d, 1d);
+        double inv = 1d - x;
+        return 1d - inv * inv * inv;
+    }
+
+    /// <summary>
+    /// 겹 <paramref name="ring"/> 의 알파가 올라온 정도(0~1). 안쪽 겹부터 차례로 켜지되,
+    /// 한 겹이 올라오는 구간(<see cref="RippleAlphaMs"/>)이 시차보다 길어 이웃과 겹치므로 끊기지 않고 번진다.
+    /// </summary>
+    private double IntroAlpha(int ring)
+    {
+        double t = Intro;
+        if (t >= 1d) return 1d;
+
+        double x = Math.Clamp((t * RippleTotalMs() - RippleOffsetMs(ring)) / RippleAlphaMs, 0d, 1d);
+        return x * x * (3d - 2d * x);
+    }
+
     private double Transition => (double)GetValue(TransitionProperty);
     private double Glow => (double)GetValue(GlowProperty);
     private double TintBlend => (double)GetValue(TintBlendProperty);
@@ -452,6 +605,9 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
 
     /// <summary>줌은 조각 수와 무관하지만, 조각이 수천 개면 한 프레임이 이미 무겁다.</summary>
     private const int ZoomSegmentLimit = 3000;
+
+    /// <summary>선버스트 줌의 길이. 기본형의 유일한 연출이라 공용 <see cref="Motion.Glide"/>(340ms)보다 약 70% 길게 쓴다(Treemap 은 그대로).</summary>
+    private static readonly Duration ZoomDuration = new(TimeSpan.FromMilliseconds(575));
 
     private double _zoomFrom = 1d;
     private Brush[]? _fillFading;
@@ -476,10 +632,12 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         _glowIndex = -1;
         Motion.Settle(this, TintBlendProperty, 1d);
         Motion.Settle(this, MorphProperty, 1d);
+        Motion.Settle(this, IntroProperty, 1d);
 
         _fillFading = null;
         _morphFrom = null;
         _morphGeometry = null;
+        _introFill = null;
     }
 
     /// <summary>
@@ -506,7 +664,7 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
             _ => 0.98d,
         };
 
-        Motion.From(this, TransitionProperty, 0d, 1d, Motion.Glide, Motion.Land);
+        Motion.From(this, TransitionProperty, 0d, 1d, ZoomDuration, Motion.Land);
     }
 
     /// <summary>-1 = 안으로 들어갔다, 1 = 밖으로 나왔다, 0 = 이어지지 않는 화면.</summary>
@@ -656,6 +814,64 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
     {
         double morph = Morph;
 
+        _introFill = null;
+        if (Intro < 1d && _geometry.Length == _layout.Segments.Count)
+        {
+            if (_morphGeometry == null || _morphGeometry.Length != _geometry.Length)
+                _morphGeometry = new Geometry[_geometry.Length];
+            _introFill = new Brush[_geometry.Length];
+            bool fancy = IntroStyle == SunburstIntroStyle.Fancy;
+            double grow = IntroGrow();
+
+            for (int i = 0; i < _geometry.Length; i++)
+            {
+                var s = _layout.Segments[i];
+                double local = fancy ? FancyLocal(s.Ring) : 0d;
+                double open = fancy ? FancyOpen(local) : 0d;
+                double p = fancy ? FancyAlpha(local, Math.Clamp((s.Start + s.Sweep / 2d) / 360d, 0d, 1d))
+                                 : IntroAlpha(s.Ring);
+
+                double r0, r1, start = s.Start, sweep = s.Sweep;
+                if (fancy)
+                {
+                    // 12시에서 시계 방향으로 펼쳐지며(각도) 바깥으로 두꺼워진다.
+                    r0 = RadiusAt(s.Ring);
+                    double full = Math.Max(r0 + 0.5d, RadiusAt(s.Ring + 1) - RingGap);
+                    r1 = r0 + (full - r0) * (0.55d + 0.45d * open);
+                    start *= open;
+                    sweep = Math.Max(0.02d, sweep * open);
+                }
+                else
+                {
+                    // 모든 겹이 같은 비율로 가운데에서 바깥으로 퍼진다 — 겹 사이 간격도 함께 벌어진다.
+                    double k = IntroFromScale + (1d - IntroFromScale) * grow;
+                    r0 = RadiusAt(s.Ring) * k;
+                    r1 = (RadiusAt(s.Ring + 1) - RingGap) * k;
+                }
+
+                if (p <= 0.001d || (fancy && open <= 0.001d))
+                {
+                    _morphGeometry[i] = Geometry.Empty;
+                    _introFill[i] = Brushes.Transparent;
+                    continue;
+                }
+
+                _morphGeometry[i] = BuildSegment(r0, Math.Max(r0 + 0.5d, r1), start, sweep);
+
+                if (_fill[i] is SolidColorBrush b)
+                {
+                    var faded = new SolidColorBrush(Color.FromArgb((byte)(b.Color.A * p), b.Color.R, b.Color.G, b.Color.B));
+                    faded.Freeze();
+                    _introFill[i] = faded;
+                }
+                else
+                {
+                    _introFill[i] = _fill[i];
+                }
+            }
+            return;
+        }
+
         if (_morphFrom != null && _morphFrom.Length == _geometry.Length && morph < 1d)
         {
             if (_morphGeometry == null || _morphGeometry.Length != _geometry.Length)
@@ -733,7 +949,11 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         double blend = Math.Clamp(TintBlend, 0d, 1d);
         bool crossFade = _fillFading != null && _fillFading.Length == _geometry.Length && blend < 0.999d;
 
-        if (crossFade)
+        if (_introFill != null)
+        {
+            DrawFills(dc, _introFill, seam, withGlow: false);
+        }
+        else if (crossFade)
         {
             dc.PushOpacity(1d - blend);
             DrawFills(dc, _fillFading!, seam, withGlow: false);
@@ -1184,4 +1404,17 @@ public sealed class SunburstControl : FrameworkElement, IShortcutTarget
         var segment = SegmentAt(HitTest(e.GetPosition(this), out _));
         if (segment is { CanCollect: true }) CollectRequested?.Invoke(this, segment);
     }
+}
+
+/// <summary>선버스트가 열릴 때의 연출.</summary>
+public enum SunburstIntroStyle
+{
+    /// <summary>연출 없음. 처음 모습 그대로 — 폴더를 드나들 때의 줌만 있다.</summary>
+    Basic,
+
+    /// <summary>모든 겹이 가운데에서 같이 퍼지고, 알파가 안쪽 겹부터 차례로 올라온다.</summary>
+    Ripple,
+
+    /// <summary>안쪽 겹부터 시차를 두고 시계 방향으로 펼쳐지며 커지고 짙어진다.</summary>
+    Fancy,
 }

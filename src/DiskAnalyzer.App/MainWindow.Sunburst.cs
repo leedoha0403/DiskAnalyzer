@@ -57,7 +57,13 @@ public partial class MainWindow
         _vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.RingTint)) _ = ApplyRingTintAsync();
+            if (e.PropertyName == nameof(MainViewModel.SunburstIntroStyle))
+            {
+                Sunburst.IntroStyle = _vm.SunburstIntroStyle;
+                Sunburst.PlayIntro(); // 고르자마자 한 번 보여 준다.
+            }
         };
+        Sunburst.IntroStyle = _vm.SunburstIntroStyle;
     }
 
     /// <summary>고정한 폴더 카드: 한 번 누르면 경로로 이동, 두 번이면 스캔(드라이브 카드와 같은 규칙).</summary>

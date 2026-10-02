@@ -43,6 +43,9 @@ public sealed class UiSettings
     /// </summary>
     public bool? Animations { get; set; }
 
+    /// <summary>선버스트가 열릴 때의 연출 이름(Basic · Ripple · Fancy). 안 고르면 Basic(연출 없음).</summary>
+    public string SunburstIntro { get; set; } = "Basic";
+
     /// <summary>프로세스 정리기 보기 옵션: 트리로 보기.</summary>
     public bool ProcessTreeMode { get; set; } = true;
 

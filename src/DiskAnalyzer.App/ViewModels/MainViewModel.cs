@@ -41,6 +41,7 @@ public sealed partial class MainViewModel : ObservableObject
         _sidebarCollapsed = _ui.SidebarCollapsed;
         _sidebarWidth = _ui.SidebarWidth > 0 ? _ui.SidebarWidth : DefaultSidebarWidth;
         _ringTint = Enum.TryParse<SunburstTint>(_ui.RingTint, out var tint) ? tint : SunburstTint.Size;
+        _sunburstIntro = Enum.TryParse<SunburstIntroStyle>(_ui.SunburstIntro, out var intro) ? intro : SunburstIntroStyle.Basic;
         _selectedTheme = _ui.Theme == "Daisy" ? "Navy" : _ui.Theme; // 예전 이름으로 저장된 값 이전
 
         // 50. 애니메이션. 한 번도 정한 적이 없으면(첫 실행) Windows 의 '애니메이션 표시' 설정을 따른다.
@@ -1027,6 +1028,36 @@ public sealed partial class MainViewModel : ObservableObject
             if (!Set(ref _sidebarWidth, clamped)) return;
             _ui.SidebarWidth = clamped;
             _ui.Save();
+        }
+    }
+
+    private static readonly (SunburstIntroStyle Style, string Label)[] IntroLabels =
+    [
+        (SunburstIntroStyle.Basic, "기본형"),
+        (SunburstIntroStyle.Ripple, "번짐"),
+        (SunburstIntroStyle.Fancy, "화려함"),
+    ];
+
+    public IReadOnlyList<string> SunburstIntroOptions { get; } = IntroLabels.Select(x => x.Label).ToArray();
+
+    private SunburstIntroStyle _sunburstIntro;
+
+    /// <summary>선버스트가 열릴 때의 연출. 창이 이 값을 컨트롤에 옮긴다.</summary>
+    public SunburstIntroStyle SunburstIntroStyle => _sunburstIntro;
+
+    /// <summary>설정 화면의 선택 항목(표시 이름).</summary>
+    public string SelectedSunburstIntro
+    {
+        get => IntroLabels.First(x => x.Style == _sunburstIntro).Label;
+        set
+        {
+            var style = IntroLabels.FirstOrDefault(x => x.Label == value);
+            if (style.Label == null || style.Style == _sunburstIntro) return;
+            _sunburstIntro = style.Style;
+            _ui.SunburstIntro = style.Style.ToString();
+            _ui.Save();
+            Raise(nameof(SelectedSunburstIntro));
+            Raise(nameof(SunburstIntroStyle));
         }
     }
 
